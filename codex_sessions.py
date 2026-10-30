@@ -2265,6 +2265,115 @@ def native_clone_session(args: argparse.Namespace) -> None:
     print(f"codex resume --all {new_id}")
 
 
+def strip_encrypted_reasoning(value: Any) -> tuple[Any, int]:
+    """Remove unverifiable reasoning items while preserving replayable history."""
+    if isinstance(value, list):
+        cleaned: list[Any] = []
+        removed = 0
+        for item in value:
+            if (
+                isinstance(item, dict)
+                and str(item.get("type") or "").lower() == "reasoning"
+                and "encrypted_content" in item
+            ):
+                removed += 1
+                continue
+            cleaned_item, item_removed = strip_encrypted_reasoning(item)
+            cleaned.append(cleaned_item)
+            removed += item_removed
+        return cleaned, removed
+
+    if isinstance(value, dict):
+        cleaned_dict: dict[str, Any] = {}
+        removed = 0
+        for key, item in value.items():
+            cleaned_item, item_removed = strip_encrypted_reasoning(item)
+            cleaned_dict[key] = cleaned_item
+            removed += item_removed
+        return cleaned_dict, removed
+
+    return value, 0
+
+
+def native_sanitize_session(args: argparse.Namespace) -> None:
+    """Clone a session without encrypted reasoning, adding no conversation turns."""
+    conn = init_db(args.db.expanduser())
+    row = find_session(conn, args.session)
+    if not row:
+        print(f"No session matched: {args.session}", file=sys.stderr)
+        raise SystemExit(1)
+
+    source_path = Path(row["path"])
+    source_id = row["session_id"]
+    new_id = args.new_id or str(uuid.uuid4())
+    validate_new_session_id(new_id)
+    if session_id_exists(new_id):
+        print(f"Refusing to reuse existing session id: {new_id}", file=sys.stderr)
+        raise SystemExit(1)
+
+    now_dt = dt.datetime.now(dt.UTC)
+    now = now_dt.isoformat(timespec="milliseconds").replace("+00:00", "Z")
+    target_path = target_session_path(new_id, now_dt)
+    if target_path.exists():
+        print(f"Refusing to overwrite existing file: {target_path}", file=sys.stderr)
+        raise SystemExit(1)
+
+    output_lines: list[str] = []
+    removed_reasoning = 0
+    rewritten_meta = False
+    source_lines = 0
+
+    with source_path.open("r", encoding="utf-8", errors="replace") as source:
+        for line in source:
+            source_lines += 1
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError:
+                output_lines.append(line)
+                continue
+
+            payload = record.get("payload") if isinstance(record.get("payload"), dict) else {}
+            if (
+                record.get("type") == "response_item"
+                and str(payload.get("type") or "").lower() == "reasoning"
+                and "encrypted_content" in payload
+            ):
+                removed_reasoning += 1
+                continue
+
+            cleaned_record, nested_removed = strip_encrypted_reasoning(record)
+            removed_reasoning += nested_removed
+
+            if cleaned_record.get("type") == "session_meta" and not rewritten_meta:
+                cleaned_payload = cleaned_record.get("payload")
+                if isinstance(cleaned_payload, dict) and cleaned_payload.get("id") == source_id:
+                    cleaned_payload["id"] = new_id
+                    cleaned_payload["forked_from_id"] = source_id
+                    cleaned_payload["timestamp"] = now
+                    cleaned_record["timestamp"] = now
+                    rewritten_meta = True
+
+            output_lines.append(json.dumps(cleaned_record, ensure_ascii=False) + "\n")
+
+    if not rewritten_meta:
+        print(f"Source session metadata was not found in {source_path}", file=sys.stderr)
+        raise SystemExit(2)
+
+    target_path.write_text("".join(output_lines), encoding="utf-8")
+    thread_name = args.name or row["thread_name"] or source_id
+    register_native_session(conn, target_path, new_id, thread_name, now)
+
+    print(f"created sanitized native session: {new_id}")
+    print(f"path: {target_path}")
+    print(f"source: {source_id}")
+    print(f"source lines: {source_lines}")
+    print(f"output lines: {len(output_lines)}")
+    print(f"encrypted reasoning items removed: {removed_reasoning}")
+    print("conversation turns added: 0")
+    print("try opening with:")
+    print(f"codex resume --all {new_id}")
+
+
 def cockpit_role(row: sqlite3.Row) -> str:
     title = (row["thread_name"] or row["summary"] or "").strip().lower()
     if title.startswith("deprecate") or title.startswith("deprecated"):
@@ -2661,6 +2770,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--db", type=Path, default=DEFAULT_DB, help=f"SQLite DB path (default: {DEFAULT_DB})")
     sub = parser.add_subparsers(dest="command", required=True)
 
+    from csl_transfer import add_commands
+    add_commands(sub, sys.modules[__name__])
+
     p_index = sub.add_parser("index", help="Build or refresh the session index.")
     p_index.add_argument("--sessions-dir", type=Path, default=DEFAULT_SESSIONS_DIR)
     p_index.add_argument("--session-index", type=Path, default=DEFAULT_SESSION_INDEX)
@@ -2854,6 +2966,15 @@ def build_parser() -> argparse.ArgumentParser:
     p_native_clone.add_argument("--name", help="Thread name for the cloned session. Defaults to '<source name> clone'.")
     p_native_clone.add_argument("--new-id", help="Optional UUID for the new session. Defaults to a generated UUID.")
     p_native_clone.set_defaults(func=native_clone_session)
+
+    p_native_sanitize = sub.add_parser(
+        "native-sanitize",
+        help="Create a faithful native clone with unverifiable encrypted reasoning removed.",
+    )
+    p_native_sanitize.add_argument("session", help="Session id, path fragment, or thread name fragment.")
+    p_native_sanitize.add_argument("--name", help="Thread name for the sanitized session. Defaults to the source name.")
+    p_native_sanitize.add_argument("--new-id", help="Optional UUID for the new session. Defaults to a generated UUID.")
+    p_native_sanitize.set_defaults(func=native_sanitize_session)
 
     p_stats = sub.add_parser("stats", help="Show index statistics.")
     p_stats.add_argument("--limit", type=int, default=20)

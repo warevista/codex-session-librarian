@@ -364,6 +364,21 @@ Behavior:
 - Reindexes the new session into the librarian DB
 - Prints a `codex resume --all <new-session-id>` command
 
+### `export` And `import`
+
+Transfer native conversation history between teammates without transferring their
+accounts or local Codex databases:
+
+```bash
+csl export <uuid> --to ~/Downloads
+csl export <uuid> <another-uuid> --to ~/Downloads/handoff.csl.zip
+csl import ~/Downloads/handoff.csl.zip --list
+csl import ~/Downloads/handoff.csl.zip --cwd ~/Documents/projects --open
+```
+
+Export defaults to portable mode; add `--raw` to retain encrypted reasoning.
+Import always creates fresh UUIDs. Full details: [TRANSFERS.md](TRANSFERS.md).
+
 ### `native-clone`
 
 Create an experimental full native clone that may open with `codex resume`.

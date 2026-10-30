@@ -6,16 +6,21 @@ This guide is for a teammate or another local agent using Codex Session Libraria
 
 - Codex installed and usable on the machine
 - Local Codex history under `~/.codex/`
-- Python 3 available in the shell
+- Python 3.11 or newer available in the shell
 - `~/.local/bin` on `PATH` if installing to the default location
 
 This tool uses only the Python standard library. No virtualenv or external packages are required.
 
 ## Install
 
-Clone or unpack the repository, then run:
+Puerta (`puertajs`) and Daniela (`danielaz7`) should accept their GitHub collaborator
+invitation to get push access. The repository is public, so cloning/pulling does
+not require an invitation.
+
+Clone the shared repository, then run:
 
 ```bash
+git clone https://github.com/warevista/codex-session-librarian.git
 cd codex-session-librarian
 ./install.sh
 ```
@@ -49,6 +54,47 @@ And writes:
 
 - `~/.codex/session_librarian.sqlite`
 - `~/.codex/session_cuts/` when using `cut`
+
+## Receive A Shared Session
+
+Your agent can import the native conversation without first indexing your own history:
+
+```bash
+csl import ~/Downloads/team-handoff.csl.zip --list
+csl import ~/Downloads/team-handoff.csl.zip --cwd ~/Documents/projects --open
+```
+
+The directory must exist on your computer. Your own Codex login is used; neither
+the sender's account nor its credentials are copied. The session receives a new
+UUID, so importing it again never overwrites your previous copy.
+
+To send sessions back:
+
+```bash
+csl export <session-uuid> --to ~/Downloads
+```
+
+Transfer the ZIP privately. Do not commit session packages to this public repository.
+Read [TRANSFERS.md](TRANSFERS.md) for limits and `--raw` behavior.
+
+## Update And Contribute
+
+```bash
+cd codex-session-librarian
+git pull --ff-only
+```
+
+No reinstall is needed: `csl` points to this checkout. To contribute code:
+
+```bash
+git switch -c feat/my-change
+python3 -m unittest discover -s tests -v
+git add <changed-files>
+git commit -m "Describe the change"
+git push -u origin feat/my-change
+```
+
+Use a pull request to integrate changes into `main`.
 
 ## Basic Use
 

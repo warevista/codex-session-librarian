@@ -124,11 +124,36 @@ Create an experimental full native clone:
 csl native-clone 019cf844 --name "Vitral GTM full clone"
 ```
 
+## Share A Conversation
+
+Export one or several sessions, including archived sessions:
+
+```bash
+csl export <session-uuid> --to ~/Downloads
+csl export <session-uuid> <another-uuid> --to ~/Downloads/team-handoff.csl.zip
+```
+
+Without a selector, `csl export` offers a numbered picker in an interactive terminal.
+The recipient imports the ZIP using their own local project directory:
+
+```bash
+csl import ~/Downloads/team-handoff.csl.zip --list
+csl import ~/Downloads/team-handoff.csl.zip --cwd ~/Documents/projects --open
+```
+
+Import validates the package/checksums, creates fresh UUIDs, registers the sessions
+in CSL and Codex's local session index, and prints the resume commands. `--open`
+launches Codex; with several sessions it asks which one to open. No database or
+authentication files are transferred. See [portable transfers](docs/TRANSFERS.md)
+and [team installation](docs/TEAM_INSTALL.md).
+
 ## Docs
 
 - [Commands](docs/COMMANDS.md)
 - [Session Workflows](docs/SESSION_WORKFLOWS.md)
 - [Evolution](docs/EVOLUTION.md)
+- [Portable Transfers](docs/TRANSFERS.md)
+- [Team Installation](docs/TEAM_INSTALL.md)
 
 ## Notes
 
