@@ -250,6 +250,21 @@ class TransferTests(unittest.TestCase):
         self.assertNotEqual(argv[-1], self.sid)
         self.assertFalse(launch.call_args.kwargs.get("shell", False))
 
+    def test_clean_team_install_launches_from_symlink(self):
+        prefix = self.root / "fresh prefix"
+        installed = subprocess.run([str(REPO / "install.sh"), str(prefix)],
+                                   text=True, capture_output=True, timeout=10)
+        self.assertEqual(installed.returncode, 0, installed.stderr)
+        result = subprocess.run([str(prefix / "bin/csl"), "import", "--help"],
+                                cwd=self.cwd, env=self.env, text=True, capture_output=True, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("--cwd", result.stdout)
+        self.assertFalse((prefix / "bin/codex_sessions.py").exists())
+        exported = subprocess.run([str(prefix / "bin/csl"), "export", self.sid, "--to", str(self.bundle)],
+                                  cwd=self.cwd, env=self.env, text=True, capture_output=True, timeout=10)
+        self.assertEqual(exported.returncode, 0, exported.stderr)
+        self.assertTrue(self.bundle.exists())
+
     def test_symlink_member_rejected(self):
         self.export()
         link = zipfile.ZipInfo("extra")

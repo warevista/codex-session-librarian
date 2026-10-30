@@ -1,5 +1,9 @@
-#!/usr/bin/env sh
-set -eu
+#!/usr/bin/env python3
+"""Resolve the installed symlink before loading the repository entry point."""
+from pathlib import Path
+import runpy
+import sys
 
-SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-exec "$SCRIPT_DIR/codex_sessions.py" "$@"
+repository = Path(__file__).resolve().parent
+sys.path.insert(0, str(repository))
+runpy.run_path(str(repository / "codex_sessions.py"), run_name="__main__")
