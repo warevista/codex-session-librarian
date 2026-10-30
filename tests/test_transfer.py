@@ -37,6 +37,8 @@ class TransferTests(unittest.TestCase):
         return [
             {"type": "session_meta", "payload": {"id": sid, "session_id": sid,
              "cwd": "/source/project", "history_mode": "paginated",
+             "history_base": {"thread_id": "unavailable-parent", "end_ordinal_exclusive": 10},
+             "forked_from_ordinal_exclusive": 10,
              "creator_account_id": "old-account", "context_window": {"window_id": "old"}}},
             {"type": "turn_context", "payload": {"cwd": "/source/project"}},
             {"type": "response_item", "payload": {"type": "message", "role": "user",
@@ -102,6 +104,8 @@ class TransferTests(unittest.TestCase):
         self.assertEqual(meta["history_mode"], "legacy")
         self.assertNotIn("creator_account_id", meta)
         self.assertNotIn("context_window", meta)
+        self.assertNotIn("history_base", meta)
+        self.assertNotIn("forked_from_ordinal_exclusive", meta)
         self.assertEqual(target.stat().st_mode & 0o777, 0o600)
         self.run_cli("show", meta["id"])
 

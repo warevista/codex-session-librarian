@@ -17,6 +17,8 @@ import uuid
 import zipfile
 from pathlib import Path
 
+from csl_display import project_file
+
 FORMAT = "codex-session-librarian"
 VERSION = 1
 MAX_MANIFEST = 1024 * 1024
@@ -310,7 +312,8 @@ def rewrite_import_record(record, sid, entry, cwd, now):
             payload["session_id"] = sid
         # Rebuild a local legacy replay; source account identities/pagination aren't portable.
         payload["history_mode"] = "legacy"
-        for key in ("creator_user_id", "creator_account_id", "context_window", "runtime_workspace_roots"):
+        for key in ("creator_user_id", "creator_account_id", "context_window", "runtime_workspace_roots",
+                    "history_base", "forked_from_ordinal_exclusive"):
             payload.pop(key, None)
         record["timestamp"] = now
     elif kind == "turn_context":
@@ -344,6 +347,7 @@ def import_bundle(args, csl):
             digest = hashlib.sha256()
             local = Path(tmp) / f"{sid}.jsonl"
             metadata = messages = 0
+            source_bases = []
             first_kind = None
             with archive.open(entry["file"]) as source, local.open("wb") as target:
                 def checked_lines():
@@ -355,6 +359,8 @@ def import_bundle(args, csl):
                     metadata += record.get("type") == "session_meta"
                     payload = record.get("payload", {})
                     if isinstance(payload, dict):
+                        if record.get("type") == "session_meta" and payload.get("history_base"):
+                            source_bases.append(payload["history_base"])
                         messages += (payload.get("type") == "message" and payload.get("role")
                                      in ("user", "assistant")) or payload.get("type") in ("user_message", "agent_message")
                     target.write(json_line(rewrite_import_record(record, sid, entry, cwd, now)))
@@ -362,8 +368,15 @@ def import_bundle(args, csl):
                 raise TransferError(f"Checksum mismatch for {entry['id']}")
             if first_kind != "session_meta" or not metadata or not messages:
                 raise TransferError(f"Session {entry['id']} lacks replayable local history")
+            projected = Path(tmp) / f"{sid}.display.jsonl"
+            display = project_file(local, projected, read_records, json_line, {entry["id"], sid})
+            local = projected
             staged.append((local, sid, entry, now))
             print(f"{entry['id']}  {safe_text(entry['title'])}  ({entry['bytes']} bytes, {manifest['mode']})")
+            if display:
+                print(f"visible-history projection: {display.get('user_message', 0)} user, {display.get('agent_message', 0)} assistant messages")
+            if source_bases:
+                print("Note: source fork references an inherited parent history; this import includes only the records present in this package, not missing parent files.")
         if args.list:
             print("Package validated; no sessions installed.")
             return

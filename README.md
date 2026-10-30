@@ -63,6 +63,11 @@ another independent copy. Each continuation stays independent: this is a
 snapshot handoff, not live synchronization or automatic merging. Sharing a
 received session again records which snapshot it continues.
 
+Imports adapt modern visible-message events for Codex's standalone history UI,
+without changing the model's message records. If an older import shows only
+timings or completion events, update CSL and receive it again with `--new`.
+The sender does not need to export the same package again.
+
 `csl inbox --json` provides structured metadata for agents without downloading
 the conversations. `csl team status` checks your connection.
 
@@ -132,6 +137,8 @@ csl cut SESSION_UUID --to 12 --name earlier-discussion
 ## What Moves And What Does Not
 
 - Packages contain conversation messages, tool calls/results and provenance.
+- A fork may reference parent history absent from its package. CSL warns about
+  this and imports only the included records; it cannot reconstruct missing ancestors.
 - Project repositories, installed tools, auth files and external attachments are
   not collected. Historical paths in message text still refer to the sender.
 - Each recipient uses their own Codex and GitHub authentication.
@@ -161,6 +168,14 @@ No extra Python dependencies:
 ```bash
 python3 -m unittest discover -s tests -v
 ```
+
+With Codex installed, include the offline native history-visibility regression:
+
+```bash
+CSL_RUN_CODEX_NATIVE_TESTS=1 python3 -m unittest discover -s tests -v
+```
+
+This uses an isolated temporary Codex home and makes no model requests.
 
 ## Documentation
 
