@@ -366,6 +366,19 @@ Behavior:
 
 ### `export` And `import`
 
+For automatic private GitHub transfer, use:
+
+```bash
+csl team connect warevista/codex-session-exchange
+csl share <uuid> --title "Team context"
+csl inbox --json
+csl receive csl-xxxxxxxxxxxx --cwd ~/Documents/projects --open
+```
+
+`team status` checks the connection. `share` supports several selectors and
+`--raw`. `inbox --limit N` bounds the metadata listing. `receive --new` makes a
+fresh copy instead of reusing an existing import. See [SHARING.md](SHARING.md).
+
 Transfer native conversation history between teammates without transferring their
 accounts or local Codex databases:
 

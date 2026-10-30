@@ -127,6 +127,15 @@ class TransferTests(unittest.TestCase):
         self.run_cli("import", self.bundle)
         self.assertEqual(len(self.imported()), 2)
 
+    def test_import_does_not_print_or_store_terminal_control_sequences(self):
+        self.export()
+        self.alter(lambda m, c: m["sessions"][0].update(title="\x1b]0;bad\x07Title\nline"))
+        result = self.run_cli("import", self.bundle)
+        self.assertNotIn("\x1b", result.stdout)
+        self.assertNotIn("\x07", result.stdout)
+        index = (self.home / "session_index.jsonl").read_text()
+        self.assertNotIn("\x1b", json.loads(index)["thread_name"])
+
     def test_list_validates_without_installing(self):
         self.export()
         result = self.run_cli("import", self.bundle, "--list")

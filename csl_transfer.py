@@ -28,6 +28,10 @@ class TransferError(ValueError):
     pass
 
 
+def safe_text(value):
+    return "".join(char if char.isprintable() else " " for char in str(value))
+
+
 def read_records(stream):
     for number, line in enumerate(stream, 1):
         if not line.strip():
@@ -159,7 +163,7 @@ def resolve_sources(needles, csl, db):
         conn.close()
 
 
-def export_bundle(args, csl):
+def export_bundle(args, csl, *, quiet=False):
     sources = resolve_sources(args.sessions, csl, args.db)
     destination = args.to.expanduser()
     if not destination.name.lower().endswith(".zip"):
@@ -228,10 +232,12 @@ def export_bundle(args, csl):
         os.chmod(staged, 0o600)
         # Atomic, exclusive publication: even concurrent exports cannot overwrite a package.
         os.link(staged, destination)
-    print(f"exported: {destination.resolve()}")
-    print(f"sessions: {len(sources)}; mode: {manifest['mode']}")
-    print("Contains conversation/tool history, which may include sensitive text; no auth files or project assets are included.")
-    print(f"recipient: csl import {shlex.quote(destination.name)} --cwd /path/to/project --open")
+    if not quiet:
+        print(f"exported: {destination.resolve()}")
+        print(f"sessions: {len(sources)}; mode: {manifest['mode']}")
+        print("Contains conversation/tool history, which may include sensitive text; no auth files or project assets are included.")
+        print(f"recipient: csl import {shlex.quote(destination.name)} --cwd /path/to/project --open")
+    return destination.resolve()
 
 
 def inspect_bundle(archive):
@@ -347,7 +353,7 @@ def import_bundle(args, csl):
             if first_kind != "session_meta" or not metadata or not messages:
                 raise TransferError(f"Session {entry['id']} lacks replayable local history")
             staged.append((local, sid, entry, now))
-            print(f"{entry['id']}  {entry['title']}  ({entry['bytes']} bytes, {manifest['mode']})")
+            print(f"{entry['id']}  {safe_text(entry['title'])}  ({entry['bytes']} bytes, {manifest['mode']})")
         if args.list:
             print("Package validated; no sessions installed.")
             return
@@ -358,7 +364,7 @@ def import_bundle(args, csl):
                 with target.open("xb") as output, local.open("rb") as source:
                     os.chmod(target, 0o600)
                     shutil.copyfileobj(source, output)
-                title = args.name or entry["title"]
+                title = safe_text(args.name or entry["title"])
                 csl.register_native_session(conn, target, sid, title, now)
                 imported.append(sid)
                 print(f"imported: {sid} (source: {entry['id']})")
@@ -366,15 +372,24 @@ def import_bundle(args, csl):
         finally:
             conn.close()
     if args.open:
-        selected = 0
-        if len(imported) > 1:
-            try:
-                selected = int(input(f"Open which session (1-{len(imported)})? ")) - 1
-                if not 0 <= selected < len(imported):
-                    raise ValueError
-            except ValueError as exc:
-                raise TransferError("Sessions imported; invalid selection, use a printed resume command") from exc
-        raise SystemExit(subprocess.call(["codex", "-C", str(cwd), "resume", "--all", imported[selected]]))
+        open_sessions(imported, cwd)
+    return imported
+
+
+def open_sessions(imported, cwd):
+    if not imported:
+        raise TransferError("No imported sessions to open")
+    selected = 0
+    if len(imported) > 1:
+        if not sys.stdin.isatty():
+            raise TransferError("Opening multiple sessions needs a terminal; use a printed resume command")
+        try:
+            selected = int(input(f"Open which session (1-{len(imported)})? ")) - 1
+            if not 0 <= selected < len(imported):
+                raise ValueError
+        except ValueError as exc:
+            raise TransferError("Sessions imported; invalid selection, use a printed resume command") from exc
+    raise SystemExit(subprocess.call(["codex", "-C", str(cwd), "resume", "--all", imported[selected]]))
 
 
 def run_transfer(args, csl):

@@ -57,6 +57,26 @@ And writes:
 
 ## Receive A Shared Session
 
+For the private GitHub inbox, install GitHub CLI and connect once per computer:
+
+```bash
+gh auth login
+csl team connect warevista/codex-session-exchange
+```
+
+Accept the separate invitation to the private exchange first. Then:
+
+```bash
+csl share <session-uuid> --title "Context for the team"
+csl inbox
+csl receive csl-xxxxxxxxxxxx --cwd ~/Documents/projects --open
+```
+
+Use the ID printed by `share`/`inbox`. Receiving again reuses your existing copy;
+`--new` requests an independent copy. Read [SHARING.md](SHARING.md) for details.
+
+### Manual ZIP Transfer
+
 Your agent can import the native conversation without first indexing your own history:
 
 ```bash

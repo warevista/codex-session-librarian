@@ -6,6 +6,14 @@ workflow under `docs/` before changing it.
 
 ## Session Transfers
 
+- Team connection: `csl team connect OWNER/PRIVATE-REPO`; credentials stay in gh.
+- Team send: `csl share <UUID-or-name> --title "Topic"`.
+- Team discovery: `csl inbox --json` fetches metadata, not transcripts.
+- Team receive: `csl receive <share-id> --cwd <local-project> --open`.
+- Repeat receives reuse the latest local copy; add `--new` only when requested.
+- Team packages must go to the private exchange, never the public tool repo.
+- Do not upload real conversation history for routine tests; use synthetic fixtures.
+
 - Export: `csl export <UUID-or-name> --to ~/Downloads`. Multiple selectors are
   supported. Omitting selectors opens a numbered picker in a terminal.
 - Import inspection: `csl import <package.csl.zip> --list`.

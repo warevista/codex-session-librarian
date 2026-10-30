@@ -1,305 +1,172 @@
 # Codex Session Librarian
 
-LLM-native local CLI for indexing, searching, summarizing, and trimming Codex conversation/session files.
+Find, reopen, clone, and share native Codex conversations from your terminal or
+through your coding agent. CSL works with the actual JSONL history, not just a
+summary.
 
-It reads `~/.codex/sessions/**/*.jsonl`, stores compact metadata in `~/.codex/session_librarian.sqlite`, and avoids re-parsing unchanged session files.
+## Install
 
-It is designed primarily for LLM-assisted operators: the workflows optimize for an agent or assistant that needs to recall, summarize, trim, reopen, and compare past Codex sessions quickly.
-
-## Architecture
-
-The tool uses four local storage layers:
-
-- Raw Codex sessions in `~/.codex/sessions/**/*.jsonl`
-- Native Codex session catalog in `~/.codex/session_index.jsonl`
-- Librarian index in `~/.codex/session_librarian.sqlite`
-- Safe cut packages in `~/.codex/session_cuts/`
-
-Operational flow:
-
-1. `csl index` parses raw session JSONL files.
-2. It extracts compact metadata and stores it in SQLite.
-3. Search and recall commands read from SQLite, not from the raw archive.
-4. `cut` writes a Markdown context package for a fresh session.
-5. `native-cut` writes a synthetic session JSONL and registers it into Codex's session catalog.
-
-## What It Covers
-
-- Fast local search over Codex sessions and forks
-- Durable summaries and tags for important conversations
-- Safe cut packages for restarting from an earlier point
-- Experimental native trimmed clones that may open with `codex resume`
-- LLM-friendly workflows for recalling and reusing prior session context
-
-## Data Model
-
-Each indexed session stores:
-
-- session id
-- thread name
-- started/updated timestamps
-- cwd and inferred project
-- heuristic summary and tags
-- durable LLM summary and tags
-- first and last user message
-- aggregated user messages
-- aggregated assistant messages
-- extracted commands/tool calls
-- extracted file/path references
-- fork-hint flag
-- file size, mtime, parse counters, and index timestamp
-
-Heuristic metadata is derived automatically from the raw session. Durable metadata is added explicitly with `csl annotate`.
-
-## Reliability Model
-
-There are three operational levels:
-
-- Stable: `index`, `search`, `recall`, `recent`, `show`, `related`, `summarize`, `annotate`, `queue`, `stats`
-- Safe but indirect: `cut`
-- Experimental and format-dependent: `native-cut`
-
-`cut` is safe because it does not modify Codex's native session files.
-
-`native-cut` is experimental because it depends on Codex's current local JSONL/session-index behavior. It rewrites session metadata, writes a new JSONL file, and appends a new entry to `~/.codex/session_index.jsonl` so the clone may appear in `codex resume`.
-
-## Quick Start
-
-Install the local launcher on this machine:
+Requirements: Linux, Python 3.11+, and Codex installed and authenticated. Team
+sharing also needs [GitHub CLI](https://cli.github.com/) (`gh`). Local history
+and ZIP transfers use only the Python standard library.
 
 ```bash
+git clone https://github.com/warevista/codex-session-librarian.git
+cd codex-session-librarian
 ./install.sh
 ```
 
-Or install to a custom prefix:
+Make sure `~/.local/bin` is on `PATH`. No virtualenv or pip install is needed.
+An optional prefix is supported: `./install.sh /usr/local`.
+
+Update this checkout with `git pull --ff-only`. The installed launcher follows
+the checkout, so no reinstall is needed.
+
+## Share With The Team
+
+Connect once on each computer, using that person's own GitHub account:
 
 ```bash
-./install.sh /usr/local
+gh auth login
+csl team connect warevista/codex-session-exchange
 ```
 
-Refresh the index:
+The exchange is **private** and separate from this public code repository.
+Accept the collaborator invitation to gain access. Packages are GitHub Release
+assets; nobody needs to clone the exchange, commit ZIPs, manage branches, or
+make a PR to share a conversation.
+
+Send:
 
 ```bash
-csl index --prune
+csl share SESSION_UUID --title "Workspace publishing discussion"
 ```
 
-Search by topic:
+CSL exports a portable snapshot and prints its share ID and private GitHub link.
+You can share several session UUIDs in one command. Without a selector, a
+numbered local picker is available in an interactive terminal.
+
+Receive:
 
 ```bash
-csl search "role charter"
-csl search vitral gtm
-csl search vitral --project vitral
+csl inbox
+csl receive csl-SHARE_ID --cwd ~/Documents/projects --open
 ```
 
-Recall a conversation from fuzzy memory:
+Use the actual `csl-xxxxxxxxxxxx` ID printed by `share` or `inbox`.
+`receive` downloads, validates, imports with new UUIDs and opens Codex.
+The directory must exist locally. Omit `--open` to get the resume command
+without launching Codex. Omit the share ID for an interactive inbox picker.
+
+Receiving the same snapshot again reuses your copy. Add `--new` to import
+another independent copy. Each continuation stays independent: this is a
+snapshot handoff, not live synchronization or automatic merging. Sharing a
+received session again records which snapshot it continues.
+
+`csl inbox --json` provides structured metadata for agents without downloading
+the conversations. `csl team status` checks your connection.
+
+See [team sharing](docs/SHARING.md) and [team installation](docs/TEAM_INSTALL.md).
+
+## Share A ZIP Without GitHub
 
 ```bash
-csl recall "LinkedIn API token developer app connections" --anchor linkedin
-```
-
-Inspect one session:
-
-```bash
-csl show 019cf844
-```
-
-Create a safe cut:
-
-```bash
-csl timeline 019cf844 --width 180
-csl cut 019cf844 --to 14 --name vitral-gtm-before-bilingual-job-docs
-```
-
-Create an experimental native resumable clone:
-
-```bash
-csl native-cut 019cf844 \
-  --before-text "Yes, provide those 3 documents/artifacts..." \
-  --name "Vitral GTM cut before bilingual job docs"
-```
-
-Create an experimental full native clone:
-
-```bash
-csl native-clone 019cf844 --name "Vitral GTM full clone"
-```
-
-## Share A Conversation
-
-Export one or several sessions, including archived sessions:
-
-```bash
-csl export <session-uuid> --to ~/Downloads
-csl export <session-uuid> <another-uuid> --to ~/Downloads/team-handoff.csl.zip
-```
-
-Without a selector, `csl export` offers a numbered picker in an interactive terminal.
-The recipient imports the ZIP using their own local project directory:
-
-```bash
+csl export SESSION_UUID --to ~/Downloads
+csl export SESSION_UUID ANOTHER_UUID --to ~/Downloads/team-handoff.csl.zip
 csl import ~/Downloads/team-handoff.csl.zip --list
 csl import ~/Downloads/team-handoff.csl.zip --cwd ~/Documents/projects --open
 ```
 
-Import validates the package/checksums, creates fresh UUIDs, registers the sessions
-in CSL and Codex's local session index, and prints the resume commands. `--open`
-launches Codex; with several sessions it asks which one to open. No database or
-authentication files are transferred. See [portable transfers](docs/TRANSFERS.md)
-and [team installation](docs/TEAM_INSTALL.md).
+Export accepts UUIDs, unambiguous prefixes, indexed names, or JSONL paths.
+Archived and newly created sessions can be found by UUID without reindexing.
+Metadata-only histories are rejected because they do not contain messages.
+`--list` validates without importing.
 
-## Docs
+Default export/share removes encrypted reasoning and opaque encrypted state
+for portability. `--raw` retains it, but may fail under a different account.
+Messages and tool history are preserved; originals are never changed.
+See [portable transfers](docs/TRANSFERS.md).
 
-- [Commands](docs/COMMANDS.md)
-- [Session Workflows](docs/SESSION_WORKFLOWS.md)
-- [Evolution](docs/EVOLUTION.md)
-- [Portable Transfers](docs/TRANSFERS.md)
-- [Team Installation](docs/TEAM_INSTALL.md)
-
-## Notes
-
-- No external Python packages are required.
-- `csl` is a thin wrapper around `codex_sessions.py`.
-- `install.sh` creates a symlinked `csl` launcher under `~/.local/bin` by default.
-- This tool is intentionally LLM-native: it is built for an assistant/operator workflow, not for general chat-history browsing.
-- Durable summaries are saved into the local SQLite index and improve future search quality.
-- `cut` is the safe trim workflow. It creates a Markdown context package and leaves Codex's native session files untouched.
-- `native-cut` is experimental. It writes a synthetic session JSONL plus a `session_index.jsonl` entry so the clone may be opened with `codex resume`.
-- `native-clone` is experimental. It copies a full selected JSONL session, rewrites native session metadata with a new id, and registers the clone in `session_index.jsonl`.
-- Cross-account clones on the same PC need extra care when a source JSONL contains multiple inherited `session_meta` rows. See `docs/SESSION_WORKFLOWS.md` section "Clone Between Local Codex Accounts".
-- Native Codex fork relationships are exposed in JSONL via `forked_from_id`, but Codex does not currently expose an official "trim at turn N" command.
-- Search is lexical and weighted, not embedding-based.
-- Durable summaries and tags take precedence over heuristic summaries and tags when displaying and searching sessions.
-
-## Common Commands
-
-Build the index:
+## Find And Reopen A Conversation
 
 ```bash
-./install.sh
 csl index --prune
-```
-
-Search by topic:
-
-```bash
-csl search mongo kernel
-csl search "role charter"
-csl search gke deployment
-csl search vitral --project vitral
-```
-
-Pinpoint a fuzzy remembered work session:
-
-```bash
-csl pinpoint mongo 8.2 GLIBC_TUNABLES deployment.yaml --repo vitral_backend
-```
-
-Recall a fuzzy remembered discussion:
-
-```bash
-csl recall "LinkedIn API token developer app connections" --anchor linkedin
-```
-
-Show recent sessions:
-
-```bash
 csl recent --limit 20
-csl recent --project vitral
+csl recall "LinkedIn API token developer app" --anchor linkedin
+csl search vitral gtm
+csl show SESSION_UUID --messages 20 --include-assistant
+codex resume --all SESSION_UUID
 ```
 
-Open the interactive session cockpit:
+Search uses a local SQLite index and lexical ranking, not embeddings.
+`recall` helps with fuzzy remembered discussions; `find-work`, `patches`,
+and `pinpoint` help locate actual implementation work. Match snippets must
+be checked before claiming that a session is the right one.
+
+For an interactive local browser, use `csl cockpit`.
+For durable annotations:
 
 ```bash
-csl cockpit
-csl cockpit syntheval
-csl cockpit --print --limit 20
+csl annotate SESSION_UUID --summary "Publishing workspaces and visitor conversations." --tags "publishing, slides"
 ```
 
-Inspect one session:
+The default index covers active local sessions. Archived files can be indexed
+separately with `index --sessions-dir`; export/share also locate them directly.
+
+## Clone Or Trim
 
 ```bash
-csl show 019d203b
-csl show 019d203b --messages 20 --include-assistant
+csl native-clone SESSION_UUID --name "Independent continuation"
+csl native-sanitize SESSION_UUID --name "Portable local copy"
+csl timeline SESSION_UUID --width 180
+csl native-cut SESSION_UUID --before-text "Later topic starts here" --name "Earlier discussion"
 ```
 
-Find related sessions:
+These commands create new native sessions. `native-sanitize` removes encrypted
+reasoning. For a Markdown context handoff instead:
 
 ```bash
-csl related 019d203b
+csl cut SESSION_UUID --to 12 --name earlier-discussion
 ```
 
-Prepare a summary:
+## What Moves And What Does Not
+
+- Packages contain conversation messages, tool calls/results and provenance.
+- Project repositories, installed tools, auth files and external attachments are
+  not collected. Historical paths in message text still refer to the sender.
+- Each recipient uses their own Codex and GitHub authentication.
+- Conversation/tool text may contain secrets; portable cleanup is **not** secret
+  redaction. Review before sharing. No real session packages belong in this public repo.
+- Checksums detect corruption, not sender authenticity.
+- Imported history is context, not authorization to execute unfinished tasks.
+
+Native replay depends on Codex's current JSONL format and the recipient's
+available model/provider. Metadata without messages cannot restore history.
+A successful import alone does not prove a successful model turn.
+
+## Storage And Development
+
+CSL reads `$CODEX_HOME` (default `~/.codex`):
+
+| Location | Purpose |
+|---|---|
+| `sessions/`, `archived_sessions/` | Native local histories |
+| `session_index.jsonl` | Codex session names |
+| `session_librarian.sqlite` | Search index and annotations |
+| `session_cuts/` | Markdown handoffs |
+| `csl-sharing/` | Team repository setting and local receive receipts |
+
+No extra Python dependencies:
 
 ```bash
-csl summarize 019d203b
-csl summarize 019d203b --json --assistant-messages 6 --commands 20 --files 20
+python3 -m unittest discover -s tests -v
 ```
 
-Persist durable annotations:
+## Documentation
 
-```bash
-csl annotate 019d203b \
-  --summary "Debugged stuck Minikube pods and MongoDB startup behavior." \
-  --tags "minikube, mongodb, kubernetes"
-csl annotate 019d203b --notes "Main fix was around startup sequencing."
-csl annotate 019d203b --clear
-```
-
-List unsummarized sessions:
-
-```bash
-csl queue --limit 20
-```
-
-Safe cut workflow:
-
-```bash
-csl timeline 019cf844 --width 180
-csl cut 019cf844 --to 12 --name vitral-gtm-before-candidate-eval \
-  --next-prompt "Continue from this point and focus only on GTM strategy."
-csl cut 019cf844 --to 12 --output-dir ~/.codex/session_cuts --message-chars 3000
-```
-
-Experimental native clone:
-
-```bash
-csl native-cut 019cf844 \
-  --before-text "Yes, provide those 3 documents/artifacts..." \
-  --name "Vitral GTM cut before bilingual job docs" \
-  --new-id 123e4567-e89b-12d3-a456-426614174000
-```
-
-Show sessions with fork hints:
-
-```bash
-csl search --forks
-```
-
-Show aggregate stats:
-
-```bash
-csl stats
-csl stats --limit 10
-```
-
-## Search And Relatedness
-
-Search is weighted across:
-
-- thread name
-- heuristic summary
-- durable summary
-- heuristic tags
-- durable tags
-- user messages
-- commands
-- files
-
-Related-session detection uses a simple score based on:
-
-- same session id
-- same thread name
-- same inferred project
-- overlapping tags
-
-Fork detection is heuristic. A fork hint is set when the raw text or thread name suggests a fork or branch.
+- [Team installation and contributions](docs/TEAM_INSTALL.md)
+- [Private GitHub sharing](docs/SHARING.md)
+- [Portable ZIP transfers](docs/TRANSFERS.md)
+- [Command reference](docs/COMMANDS.md)
+- [Session workflows](docs/SESSION_WORKFLOWS.md)
+- [Evolution](docs/EVOLUTION.md)
