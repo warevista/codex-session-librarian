@@ -19,6 +19,7 @@ import zipfile
 from pathlib import Path
 
 from csl_display import project_file
+import csl_claude
 
 FORMAT = "codex-session-librarian"
 VERSION = 1
@@ -39,12 +40,37 @@ class OpenAction(argparse.Action):
 
 def add_open_argument(parser):
     parser.add_argument("--open", nargs=argparse.REMAINDER, action=OpenAction,
-                        help="Open in Codex; all following arguments are passed literally to Codex. Put CSL options first.")
+                        help="Open in the session's CLI; all following arguments are passed literally. Put CSL options first.")
     parser.set_defaults(open=False, open_args=[])
 
 
-def resume_command(sid, cwd, open_args=()):
-    return ["codex", "-C", str(cwd), "resume", "--all", *open_args, sid]
+def resume_command(sid, cwd, open_args=(), provider="codex"):
+    if provider == "claude":
+        return ["claude", "--resume", sid, *open_args]
+    if provider != "codex":
+        raise TransferError(f"Unsupported provider: {provider}")
+    return ["codex", "-C", str(cwd), "resume", "--all", sid, *open_args]
+
+
+def selected_provider(entries, requested=None):
+    providers = set()
+    for entry in entries:
+        provider = entry.get("provider", "codex") if isinstance(entry, dict) else None
+        if provider not in ("codex", "claude"):
+            raise TransferError(f"Unsupported session provider: {provider}")
+        providers.add(provider)
+    if len(providers) != 1:
+        raise TransferError("Mixed-provider bundles are not supported; share each provider separately")
+    provider = providers.pop()
+    if requested and requested != provider:
+        raise TransferError(f"Package contains {provider} sessions, not {requested}; cross-CLI conversion is not integrated")
+    return provider
+
+
+def installed_path(sid, cwd, provider, csl):
+    if provider == "claude":
+        return csl_claude.target_path(sid, cwd)
+    return next(csl.DEFAULT_SESSIONS_DIR.rglob(f"*{sid}.jsonl"))
 
 
 def safe_text(value):
@@ -158,7 +184,9 @@ def session_header(path, csl):
     raise TransferError(f"No session metadata: {path}")
 
 
-def resolve_sources(needles, csl, db):
+def resolve_sources(needles, csl, db, provider="codex"):
+    if provider == "claude":
+        return csl_claude.resolve(needles, read_records)
     conn = csl.init_db(db.expanduser())
     try:
         if not needles:
@@ -204,7 +232,8 @@ def resolve_sources(needles, csl, db):
 
 
 def export_bundle(args, csl, *, quiet=False):
-    sources = resolve_sources(args.sessions, csl, args.db)
+    provider = getattr(args, "provider", None) or "codex"
+    sources = resolve_sources(args.sessions, csl, args.db, provider)
     destination = args.to.expanduser()
     if not destination.name.lower().endswith(".zip"):
         if len(sources) == 1:
@@ -216,13 +245,15 @@ def export_bundle(args, csl, *, quiet=False):
     destination.parent.mkdir(parents=True, exist_ok=True)
     if destination.exists():
         raise TransferError(f"Refusing to overwrite {destination}")
-    manifest = {"format": FORMAT, "version": VERSION, "created_at": csl.utc_now(),
+    manifest = {"format": FORMAT, "version": 2 if provider == "claude" else VERSION, "created_at": csl.utc_now(),
                 "mode": "raw" if args.raw else "portable", "sessions": []}
     total = 0
     with tempfile.TemporaryDirectory(prefix=".csl-export-", dir=destination.parent) as tmp:
         staged = Path(tmp) / "bundle.zip"
         with zipfile.ZipFile(staged, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
             for path, header in sources:
+                if provider == "claude":
+                    csl_claude.validate(path, read_records)
                 member = f"sessions/{header['id']}.jsonl"
                 digest = hashlib.sha256()
                 size = removed = messages = records = metadata = 0
@@ -246,12 +277,14 @@ def export_bundle(args, csl, *, quiet=False):
 
                     for record in read_records(snapshot()):
                         payload = record.get("payload", {})
-                        metadata += record.get("type") == "session_meta"
+                        metadata += record.get("type") == "session_meta" or provider == "claude"
                         if isinstance(payload, dict):
                             messages += (payload.get("type") == "message" and payload.get("role")
                                          in ("user", "assistant")) or payload.get("type") in ("user_message", "agent_message")
+                        if provider == "claude":
+                            messages += record.get("type") in ("user", "assistant")
                         if not args.raw:
-                            record, count = portable_record(record)
+                            record, count = (csl_claude.portable_record(record) if provider == "claude" else portable_record(record))
                             removed += count
                             if record is None:
                                 continue
@@ -289,7 +322,7 @@ def inspect_bundle(archive):
         raise TransferError("Missing or oversized manifest")
     manifest = json.loads(archive.read("manifest.json"))
     if (not isinstance(manifest, dict) or manifest.get("format") != FORMAT
-            or manifest.get("version") != VERSION or manifest.get("mode") not in ("raw", "portable")):
+            or manifest.get("version") not in (VERSION, 2) or manifest.get("mode") not in ("raw", "portable")):
         raise TransferError("Unsupported CSL bundle format/version/mode")
     entries = manifest.get("sessions")
     if not isinstance(entries, list) or not entries or len(entries) > 1000:
@@ -300,6 +333,10 @@ def inspect_bundle(archive):
     for entry in entries:
         if not isinstance(entry, dict):
             raise TransferError("Invalid session entry")
+        if entry.get("provider", "codex") not in ("codex", "claude"):
+            raise TransferError("Unsupported session provider")
+        if entry.get("provider", "codex") == "claude" and manifest["version"] != 2:
+            raise TransferError("Claude bundles require format version 2")
         sid = entry.get("id")
         try:
             if str(uuid.UUID(sid)) != sid:
@@ -319,6 +356,8 @@ def inspect_bundle(archive):
         info = archive.getinfo(entry["file"])
         if info.file_size != entry["bytes"] or not 0 < info.file_size <= MAX_SESSION:
             raise TransferError("Invalid session size")
+        if entry.get("provider") == "claude" and info.file_size > csl_claude.MAX_TRANSCRIPT:
+            raise TransferError("Claude transcript exceeds the 64 MiB adapter limit")
         total += info.file_size
         if total > MAX_TOTAL:
             raise TransferError("Bundle exceeds the 4 GiB total limit")
@@ -355,12 +394,13 @@ def import_bundle(args, csl):
     cwd = args.cwd.expanduser().resolve()
     if not args.list and not cwd.is_dir():
         raise TransferError(f"Working directory does not exist: {cwd}")
-    if args.open and not shutil.which("codex"):
-        raise TransferError("codex is not on PATH; install it or omit --open")
     imported = []
     with zipfile.ZipFile(args.bundle.expanduser()) as archive, tempfile.TemporaryDirectory(prefix="csl-import-") as tmp:
         manifest = inspect_bundle(archive)
         entries = manifest["sessions"]
+        provider = selected_provider(entries, getattr(args, "provider", None))
+        if args.open and not shutil.which(provider):
+            raise TransferError(f"{provider} is not on PATH; install it or omit --open")
         if args.open and len(entries) > 1 and not sys.stdin.isatty():
             raise TransferError("--open with multiple sessions needs an interactive terminal; import without --open")
         if args.name and len(entries) != 1:
@@ -369,7 +409,7 @@ def import_bundle(args, csl):
         # Validate every member, checksum and replay before installing any session.
         for entry in entries:
             sid = str(uuid.uuid4())
-            if csl.session_id_exists(sid):
+            if (csl_claude.target_path(sid, cwd).exists() if provider == "claude" else csl.session_id_exists(sid)):
                 raise TransferError("Generated UUID already exists; retry the import")
             now = csl.utc_now()
             digest = hashlib.sha256()
@@ -383,6 +423,13 @@ def import_bundle(args, csl):
                         digest.update(line)
                         yield line
                 for record in read_records(checked_lines()):
+                    if provider == "claude":
+                        if record.get("sessionId") not in (None, entry["id"]):
+                            raise TransferError("Claude source session ID differs from the manifest")
+                        rewritten = csl_claude.rewrite(record, sid, cwd, entry["id"])
+                        if rewritten is not None:
+                            target.write(json_line(rewritten))
+                        continue
                     validate_compaction(record)
                     first_kind = first_kind or record.get("type")
                     metadata += record.get("type") == "session_meta"
@@ -395,11 +442,21 @@ def import_bundle(args, csl):
                     target.write(json_line(rewrite_import_record(record, sid, entry, cwd, now)))
             if digest.hexdigest() != entry["sha256"]:
                 raise TransferError(f"Checksum mismatch for {entry['id']}")
-            if first_kind != "session_meta" or not metadata or not messages:
+            if provider == "claude":
+                csl_claude.validate(local, read_records)
+                actual = csl_claude.header(local, read_records)
+                if actual["id"] != sid:
+                    raise TransferError("Claude session identity was not rebound")
+                with local.open("ab") as output:
+                    output.write(json_line({"type": "custom-title", "sessionId": sid,
+                                            "customTitle": safe_text(args.name or entry["title"])}))
+            elif first_kind != "session_meta" or not metadata or not messages:
                 raise TransferError(f"Session {entry['id']} lacks replayable local history")
-            projected = Path(tmp) / f"{sid}.display.jsonl"
-            display = project_file(local, projected, read_records, json_line, {entry["id"], sid})
-            local = projected
+            display = {}
+            if provider == "codex":
+                projected = Path(tmp) / f"{sid}.display.jsonl"
+                display = project_file(local, projected, read_records, json_line, {entry["id"], sid})
+                local = projected
             staged.append((local, sid, entry, now))
             print(f"{entry['id']}  {safe_text(entry['title'])}  ({entry['bytes']} bytes, {manifest['mode']})")
             if display:
@@ -409,26 +466,31 @@ def import_bundle(args, csl):
         if args.list:
             print("Package validated; no sessions installed.")
             return
-        conn = csl.init_db(args.db.expanduser())
+        conn = csl.init_db(args.db.expanduser()) if provider == "codex" else None
         try:
             for local, sid, entry, now in staged:
-                target = csl.target_session_path(sid, dt.datetime.now(dt.UTC))
+                target = (csl_claude.target_path(sid, cwd) if provider == "claude"
+                          else csl.target_session_path(sid, dt.datetime.now(dt.UTC)))
+                target.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
                 with target.open("xb") as output, local.open("rb") as source:
                     os.chmod(target, 0o600)
                     shutil.copyfileobj(source, output)
                 title = safe_text(args.name or entry["title"])
-                csl.register_native_session(conn, target, sid, title, now)
+                if provider == "codex":
+                    csl.register_native_session(conn, target, sid, title, now)
                 imported.append(sid)
                 print(f"imported: {sid} (source: {entry['id']})")
-                print(f"open: {shlex.join(resume_command(sid, cwd, getattr(args, 'open_args', ())))}")
+                command = shlex.join(resume_command(sid, cwd, getattr(args, 'open_args', ()), provider))
+                print(f"open: {'cd ' + shlex.quote(str(cwd)) + ' && ' if provider == 'claude' else ''}{command}")
         finally:
-            conn.close()
+            if conn is not None:
+                conn.close()
     if args.open:
-        open_sessions(imported, cwd, getattr(args, "open_args", ()))
+        open_sessions(imported, cwd, getattr(args, "open_args", ()), provider)
     return imported
 
 
-def open_sessions(imported, cwd, open_args=()):
+def open_sessions(imported, cwd, open_args=(), provider="codex"):
     if not imported:
         raise TransferError("No imported sessions to open")
     selected = 0
@@ -441,7 +503,8 @@ def open_sessions(imported, cwd, open_args=()):
                 raise ValueError
         except ValueError as exc:
             raise TransferError("Sessions imported; invalid selection, use a printed resume command") from exc
-    raise SystemExit(subprocess.call(resume_command(imported[selected], cwd, open_args)))
+    command = resume_command(imported[selected], cwd, open_args, provider)
+    raise SystemExit(subprocess.call(command, **({"cwd": cwd} if provider == "claude" else {})))
 
 
 def run_transfer(args, csl):
@@ -457,6 +520,7 @@ def add_commands(subparsers, csl):
     export.add_argument("sessions", nargs="*", help="UUIDs, unambiguous names, or JSONL paths; omit for a picker.")
     export.add_argument("--to", type=Path, default=Path.home() / "Downloads", help="Output directory or .zip path.")
     export.add_argument("--raw", action="store_true", help="Preserve encrypted reasoning instead of portable cleanup.")
+    export.add_argument("--provider", choices=("codex", "claude"), default="codex", help="Source CLI (default: codex).")
     export.set_defaults(func=lambda args: run_transfer(args, csl))
     imp = subparsers.add_parser("import", help="Validate and install a session bundle with fresh local UUIDs.")
     imp.add_argument("bundle", type=Path)
@@ -465,4 +529,5 @@ def add_commands(subparsers, csl):
     add_open_argument(mode)
     mode.add_argument("--list", action="store_true", help="Validate and list contents without installing.")
     imp.add_argument("--name", help="Rename a single imported session.")
+    imp.add_argument("--provider", choices=("codex", "claude"), help="Require this native CLI; defaults to the package provider, not conversion.")
     imp.set_defaults(func=lambda args: run_transfer(args, csl))

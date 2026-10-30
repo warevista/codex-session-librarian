@@ -1,5 +1,6 @@
 import io
 import json
+import os
 from pathlib import Path
 import sys
 import tempfile
@@ -188,7 +189,7 @@ class SharingTests(unittest.TestCase):
         with patch.object(sharing.shutil, "which", return_value="/bin/codex"), \
              patch.object(sharing, "open_sessions") as launch:
             ids = self.receive(tag, "--open")
-        launch.assert_called_once_with(ids, self.cwd, [])
+        launch.assert_called_once_with(ids, self.cwd, [], "codex")
         receipt = json.loads((sharing.state_dir(csl) / "received.json").read_text())
         self.assertEqual(next(iter(receipt.values()))["ids"], ids)
 
@@ -198,11 +199,36 @@ class SharingTests(unittest.TestCase):
         with patch.object(sharing.shutil, "which", return_value="/bin/codex"), \
              patch.object(sharing, "open_sessions") as launch:
             ids = self.receive(tag, "--open", *flags)
-            launch.assert_called_once_with(ids, self.cwd, flags)
+            launch.assert_called_once_with(ids, self.cwd, flags, "codex")
             launch.reset_mock()
             self.assertEqual(self.receive(tag, "--open", *flags), ids)
-            launch.assert_called_once_with(ids, self.cwd, flags)
+            launch.assert_called_once_with(ids, self.cwd, flags, "codex")
         self.assertEqual(len(self.imports()), 1)
+
+    def test_claude_share_receive_reuse_new_and_provider_discovery(self):
+        from test_claude import fixture
+        from csl_claude import target_path
+        sid = str(uuid.uuid4())
+        claude_home = self.root / "claude"
+        source = claude_home / "projects/sender" / f"{sid}.jsonl"
+        source.parent.mkdir(parents=True)
+        source.write_text("".join(json.dumps(row) + "\n" for row in fixture(sid)))
+        with patch.dict(os.environ, {"CLAUDE_CONFIG_DIR": str(claude_home), "CLAUDE_CODE_PROJECT_DIR_NAME": "recipient"}):
+            self.connect()
+            tag = self.command("share", sid, "--provider", "claude", "--title", "Claude handoff")
+            self.assertEqual(self.command("inbox", "--json")[0]["provider"], "claude")
+            with patch.object(sharing.shutil, "which", return_value="/bin/claude"), \
+                 patch.object(sharing, "open_sessions") as launch:
+                ids = self.receive(tag, "--open", "--dangerously-skip-permissions")
+                launch.assert_called_once_with(ids, self.cwd, ["--dangerously-skip-permissions"], "claude")
+            path = target_path(ids[0], self.cwd)
+            self.assertTrue(path.is_file())
+            self.assertEqual(self.receive(tag), ids)
+            self.assertNotEqual(self.receive(tag, "--new"), ids)
+            receipt = json.loads((sharing.state_dir(csl) / "received.json").read_text())
+            self.assertEqual(next(iter(receipt.values()))["provider"], "claude")
+            self.assertEqual(len(self.imports()), 0)
+            self.assertEqual(json.loads(source.read_text().splitlines()[0])["sessionId"], sid)
 
     def test_cwd_change_requires_new_flag(self):
         tag = self.publish()

@@ -18,7 +18,8 @@ from types import SimpleNamespace
 import uuid
 import zipfile
 
-from csl_transfer import TransferError, add_open_argument, export_bundle, import_bundle, inspect_bundle, open_sessions, resume_command, safe_text
+from csl_transfer import TransferError, add_open_argument, export_bundle, import_bundle, inspect_bundle, installed_path, open_sessions, resume_command, safe_text, selected_provider
+import csl_claude
 
 SHARE_FORMAT = "csl-share"
 ASSET = "conversation.csl.zip"
@@ -119,7 +120,8 @@ def share(args, csl):
     print(f"sharing: {tag} -> {repo}; preparing snapshot...", flush=True)
     with tempfile.TemporaryDirectory(prefix="csl-share-") as tmp:
         bundle = Path(tmp) / ASSET
-        export_bundle(SimpleNamespace(sessions=args.sessions, to=bundle, raw=args.raw, db=args.db),
+        export_bundle(SimpleNamespace(sessions=args.sessions, to=bundle, raw=args.raw, db=args.db,
+                                      provider=getattr(args, "provider", "codex")),
                       csl, quiet=True)
         if bundle.stat().st_size >= 2 * 1024**3:
             raise TransferError("GitHub release assets must be below 2 GiB; share fewer sessions per package")
@@ -131,13 +133,16 @@ def share(args, csl):
             raise TransferError("Share title must have 1 to 200 characters; use --title")
         receipts = read_json(state_dir(csl) / "received.json", {})
         source_ids = {entry["id"] for entry in manifest["sessions"]}
+        source_provider = selected_provider(manifest["sessions"])
         parents = [key.rsplit("/", 1)[1] for key, receipt in receipts.items()
-                   if key.startswith(repo.lower() + "/") and source_ids.intersection(receipt.get("ids", []))]
-        metadata = {"format": SHARE_FORMAT, "version": 1, "asset": ASSET,
+                   if key.startswith(repo.lower() + "/") and source_ids.intersection(receipt.get("ids", []))
+                   and receipt.get("provider", "codex") == source_provider]
+        metadata = {"format": SHARE_FORMAT, "version": manifest["version"], "asset": ASSET,
                     "sha256": file_sha256(bundle), "bytes": bundle.stat().st_size,
                     "continues": sorted(parents),
                     "mode": manifest["mode"], "sessions": [
-                        {"id": s["id"], "title": s["title"]} for s in manifest["sessions"]]}
+                        {"id": s["id"], "title": s["title"], **({"provider": s["provider"]} if "provider" in s else {})}
+                        for s in manifest["sessions"]]}
         notes = Path(tmp) / "notes.json"
         notes.write_text(json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8")
         print(f"uploading: {metadata['bytes'] / 1024:.1f} KiB ({metadata['mode']})...", flush=True)
@@ -161,7 +166,7 @@ def release_metadata(release):
         meta = json.loads(release.get("body") or "")
     except (ValueError, TypeError) as exc:
         raise TransferError("Share has invalid metadata") from exc
-    if (not isinstance(meta, dict) or meta.get("format") != SHARE_FORMAT or meta.get("version") != 1
+    if (not isinstance(meta, dict) or meta.get("format") != SHARE_FORMAT or meta.get("version") not in (1, 2)
             or meta.get("asset") != ASSET or not re.fullmatch(r"[0-9a-f]{64}", str(meta.get("sha256", "")))
             or not isinstance(meta.get("bytes"), int) or not 0 < meta["bytes"] < 2 * 1024**3
             or meta.get("mode") not in ("raw", "portable") or not isinstance(meta.get("sessions"), list)
@@ -174,6 +179,9 @@ def release_metadata(release):
             uuid.UUID(session["id"])
         except (ValueError, TypeError, AttributeError, KeyError) as exc:
             raise TransferError("Invalid shared session UUID") from exc
+    provider = selected_provider(meta["sessions"])
+    if provider == "claude" and meta["version"] != 2:
+        raise TransferError("Claude shares require format version 2; update CSL")
     parents = meta.get("continues", [])
     if not isinstance(parents, list) or len(parents) > 1000 or any(
             not isinstance(parent, str) or not TAG_RE.fullmatch(parent) for parent in parents):
@@ -203,6 +211,7 @@ def list_shares(repo, limit):
                            "author": (release.get("author") or {}).get("login", "unknown"),
                            "date": release.get("published_at"), "bytes": asset["size"],
                            "sessions": len(metadata["sessions"]), "mode": metadata["mode"],
+                           "provider": selected_provider(metadata["sessions"]),
                            "continues": metadata.get("continues", [])})
             if len(shares) == limit:
                 break
@@ -223,7 +232,7 @@ def inbox(args, csl):
         print(f"inbox: {repo}")
         for entry in shares:
             print(f"{entry['id']}  {safe_text(entry['author'])}  {entry['date'] or ''}  "
-                  f"{entry['bytes'] / 1024:.1f} KiB  [{entry['sessions']}]  {safe_text(entry['title'])}")
+                  f"{entry['bytes'] / 1024:.1f} KiB  [{entry['sessions']} {entry['provider']}]  {safe_text(entry['title'])}")
         if not shares:
             print("No published CSL shares.")
     return shares
@@ -268,10 +277,11 @@ def receive(args, csl):
     cwd = args.cwd.expanduser().resolve()
     if not cwd.is_dir():
         raise TransferError(f"Working directory does not exist: {cwd}")
-    if args.open and not shutil.which("codex"):
-        raise TransferError("codex is not on PATH; omit --open or install Codex")
     release = gh_json(["api", "--hostname", "github.com", f"repos/{repo}/releases/tags/{tag}"])
     meta, asset = release_metadata(release)
+    provider = selected_provider(meta["sessions"], getattr(args, "provider", None))
+    if args.open and not shutil.which(provider):
+        raise TransferError(f"{provider} is not on PATH; omit --open or install it")
     if release["tag_name"] != tag:
         raise TransferError("GitHub returned a different share identity")
     if args.open and len(meta["sessions"]) > 1 and not sys.stdin.isatty():
@@ -287,8 +297,9 @@ def receive(args, csl):
             if previous.get("snapshot") != fingerprint:
                 raise TransferError("Shared snapshot changed remotely; publish it under a new share ID")
             paths = [Path(p) for p in previous.get("paths", [])]
-            existing = bool(paths) and all(p.is_file() and p.resolve().is_relative_to(
-                csl.DEFAULT_SESSIONS_DIR.resolve()) for p in paths)
+            allowed_root = csl_claude.projects().resolve() if provider == "claude" else csl.DEFAULT_SESSIONS_DIR.resolve()
+            existing = (previous.get("provider", "codex") == provider and bool(paths)
+                        and all(p.is_file() and p.resolve().is_relative_to(allowed_root) for p in paths))
             if existing and not args.new:
                 if previous["cwd"] != str(cwd):
                     raise TransferError(f"Already received in {previous['cwd']}; use that --cwd or --new")
@@ -304,22 +315,24 @@ def receive(args, csl):
                     raise TransferError("Downloaded package failed its release checksum/size check")
                 with zipfile.ZipFile(bundle) as archive:
                     manifest = inspect_bundle(archive)
-                expected = [{"id": s["id"], "title": s["title"]} for s in manifest["sessions"]]
+                expected = [{"id": s["id"], "title": s["title"], **({"provider": s["provider"]} if "provider" in s else {})}
+                            for s in manifest["sessions"]]
                 if expected != meta["sessions"] or manifest["mode"] != meta["mode"]:
                     raise TransferError("Package contents do not match the share metadata")
                 title = safe_text(release.get("name") or tag) if len(meta["sessions"]) == 1 else None
                 ids = import_bundle(SimpleNamespace(bundle=bundle, cwd=cwd, open=False, list=False,
                                                     name=title, db=args.db,
-                                                    open_args=getattr(args, "open_args", ())), csl)
-                paths = [str(next(csl.DEFAULT_SESSIONS_DIR.rglob(f"*{sid}.jsonl"))) for sid in ids]
+                                                    open_args=getattr(args, "open_args", ()), provider=provider), csl)
+                paths = [str(installed_path(sid, cwd, provider, csl)) for sid in ids]
                 receipts[key] = {"snapshot": fingerprint, "ids": ids, "paths": paths,
-                                 "cwd": str(cwd), "received_at": csl.utc_now()}
+                                 "cwd": str(cwd), "received_at": csl.utc_now(), "provider": provider}
                 save_json(receipt_path, receipts)
         else:
             for sid in ids:
-                print(f"open: {shlex.join(resume_command(sid, cwd, getattr(args, 'open_args', ())))}")
+                command = shlex.join(resume_command(sid, cwd, getattr(args, 'open_args', ()), provider))
+                print(f"open: {'cd ' + shlex.quote(str(cwd)) + ' && ' if provider == 'claude' else ''}{command}")
     if args.open:
-        open_sessions(ids, cwd, getattr(args, "open_args", ()))
+        open_sessions(ids, cwd, getattr(args, "open_args", ()), provider)
     return ids
 
 
@@ -354,6 +367,7 @@ def add_commands(subparsers, csl):
     share_parser.add_argument("sessions", nargs="*", help="Session selectors; omit for a local picker.")
     share_parser.add_argument("--title", help="Short title shown in the team inbox.")
     share_parser.add_argument("--raw", action="store_true", help="Keep encrypted reasoning (default: portable).")
+    share_parser.add_argument("--provider", choices=("codex", "claude"), default="codex", help="Source CLI (default: codex).")
     share_parser.set_defaults(func=lambda args: run_sharing(args, csl))
     inbox_parser = subparsers.add_parser("inbox", help="List shared snapshots without downloading transcripts.")
     inbox_parser.add_argument("--limit", type=positive_limit, default=20)
@@ -364,4 +378,5 @@ def add_commands(subparsers, csl):
     receive_parser.add_argument("--cwd", type=Path, default=Path.cwd())
     add_open_argument(receive_parser)
     receive_parser.add_argument("--new", action="store_true", help="Import a fresh independent copy even if already received.")
+    receive_parser.add_argument("--provider", choices=("codex", "claude"), help="Require the package's native CLI; not a conversion option.")
     receive_parser.set_defaults(func=lambda args: run_sharing(args, csl))

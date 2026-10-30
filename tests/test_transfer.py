@@ -316,8 +316,8 @@ class TransferTests(unittest.TestCase):
         self.assertEqual(result.exception.code, 0)
         argv, = launch.call_args.args
         self.assertEqual(argv[:5], ["codex", "-C", str(self.cwd), "resume", "--all"])
-        self.assertEqual(argv[5:7], ["--model", "example-model"])
-        self.assertNotEqual(argv[-1], self.sid)
+        self.assertEqual(argv[6:8], ["--model", "example-model"])
+        self.assertNotEqual(argv[5], self.sid)
         self.assertFalse(launch.call_args.kwargs.get("shell", False))
 
     def test_clean_team_install_launches_from_symlink(self):

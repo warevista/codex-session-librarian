@@ -1,12 +1,14 @@
 # Codex Session Librarian
 
-Find, reopen, clone, and share native Codex conversations from your terminal or
-through your coding agent. CSL works with the actual JSONL history, not just a
-summary.
+Find, reopen, clone, and share native Codex conversations, and transfer native
+Claude Code conversations, from your terminal or coding agent. CSL works with
+the actual JSONL history, not just a summary. See the maintained
+[CLI coverage matrix](docs/PROVIDER_MATRIX.md) for command-by-command scope.
 
 ## Install
 
-Requirements: Linux, Python 3.11+, and Codex installed and authenticated. Team
+Requirements: Linux and Python 3.11+. Opening a session also requires its native
+CLI (Codex or Claude Code) installed with your own authentication. Team
 sharing also needs [GitHub CLI](https://cli.github.com/) (`gh`). Local history
 and ZIP transfers use only the Python standard library.
 
@@ -54,12 +56,12 @@ csl receive csl-SHARE_ID --cwd ~/Documents/projects --open
 ```
 
 Use the actual `csl-xxxxxxxxxxxx` ID printed by `share` or `inbox`.
-`receive` downloads, validates, imports with new UUIDs and opens Codex.
+`receive` downloads, validates, imports with new UUIDs and opens the native CLI.
 The directory must exist locally. Omit `--open` to get the resume command
 without launching Codex. Omit the share ID for an interactive inbox picker.
 
 Put CSL options before `--open`. Everything after it is passed literally to
-Codex (also supported by `csl import`):
+the session's CLI (also supported by `csl import`):
 
 ```bash
 csl receive csl-SHARE_ID --cwd ~/Documents/projects --new --open --model MODEL
@@ -67,8 +69,31 @@ csl receive csl-SHARE_ID --cwd ~/Documents/projects --new --open --model MODEL
 
 For an explicitly unsandboxed launch, append
 `--dangerously-bypass-approvals-and-sandbox` after `--open`. This disables Codex
-approvals and sandboxing; CSL never adds it automatically. The current native
-importer/launcher supports Codex, not Claude Code.
+approvals and sandboxing; CSL never adds it automatically. For Claude Code,
+the corresponding explicit bypass flag is `--dangerously-skip-permissions`;
+CSL does not translate flags between CLIs.
+
+### Claude Code
+
+```bash
+csl sessions --provider claude --query "backend"
+csl share CLAUDE_UUID --provider claude --title "Claude handoff"
+csl export CLAUDE_UUID --provider claude --to ~/Downloads
+```
+
+Receive/import auto-detects the CLI from the package. All CSL options go before
+`--open`, then native CLI options follow:
+
+```bash
+csl receive csl-SHARE_ID --cwd ~/work/project --open --model haiku
+csl receive csl-SHARE_ID --cwd ~/work/project --provider claude --open --dangerously-skip-permissions
+```
+
+Use your real share ID. `--provider` on receive/import asserts the native CLI,
+not conversion: Codex-to-Claude and Claude-to-Codex are not integrated. Claude
+exports/shares require updated CSL on both sides. Search/recall/cut commands
+remain Codex-only; basic Claude discovery uses `sessions`. Inspect the full
+matrix with `csl capabilities` or `csl capabilities --json`.
 
 Receiving the same snapshot again reuses your copy. Add `--new` to import
 another independent copy. Each continuation stays independent: this is a
@@ -178,6 +203,10 @@ CSL reads `$CODEX_HOME` (default `~/.codex`):
 | `session_cuts/` | Markdown handoffs |
 | `csl-sharing/` | Team repository setting and local receive receipts |
 
+Claude transcripts are read/written under `$CLAUDE_CONFIG_DIR/projects`
+(default `~/.claude/projects`). Shared inbox settings/receipts remain under
+`$CODEX_HOME/csl-sharing` for both CLIs; neither CLI's credential files are copied.
+
 No extra Python dependencies:
 
 ```bash
@@ -191,9 +220,12 @@ CSL_RUN_CODEX_NATIVE_TESTS=1 python3 -m unittest discover -s tests -v
 ```
 
 This uses an isolated temporary Codex home and makes no model requests.
+Add `CSL_RUN_CLAUDE_NATIVE_TESTS=1` to include the isolated Claude loader check
+against localhost, which stops before generation and uses no real API key.
 
 ## Documentation
 
+- [CLI/provider command and content coverage](docs/PROVIDER_MATRIX.md)
 - [Team installation and contributions](docs/TEAM_INSTALL.md)
 - [Private GitHub sharing](docs/SHARING.md)
 - [Portable ZIP transfers](docs/TRANSFERS.md)

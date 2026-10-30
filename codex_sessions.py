@@ -2766,7 +2766,7 @@ def cockpit(args: argparse.Namespace) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Index and search local Codex sessions.")
+    parser = argparse.ArgumentParser(description="Find Codex sessions and transfer native Codex/Claude Code conversations.")
     parser.add_argument("--db", type=Path, default=DEFAULT_DB, help=f"SQLite DB path (default: {DEFAULT_DB})")
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -2774,6 +2774,8 @@ def build_parser() -> argparse.ArgumentParser:
     add_commands(sub, sys.modules[__name__])
     from csl_sharing import add_commands as add_sharing_commands
     add_sharing_commands(sub, sys.modules[__name__])
+    from csl_capabilities import add_commands as add_capability_commands
+    add_capability_commands(sub, sys.modules[__name__])
 
     p_index = sub.add_parser("index", help="Build or refresh the session index.")
     p_index.add_argument("--sessions-dir", type=Path, default=DEFAULT_SESSIONS_DIR)

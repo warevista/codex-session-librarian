@@ -57,8 +57,14 @@ csl import ~/Downloads/team-handoff.csl.zip --cwd ~/Documents/projects --open --
 
 No `--` separator is needed after `--open`. Forwarding
 `--dangerously-bypass-approvals-and-sandbox` explicitly disables Codex approvals
-and sandboxing; CSL does not enable it by default. The native importer currently
-supports Codex, not Claude Code.
+and sandboxing; CSL does not enable it by default. The native importer supports
+both Codex and Claude Code for same-CLI transfers. Claude export uses
+`csl export UUID --provider claude --to ~/Downloads`; import detects the provider
+from the bundle. Claude opens with `claude --resume UUID` in the requested local
+directory, and its explicit bypass flag is `--dangerously-skip-permissions`.
+Neither CLI's flags are translated. Claude bundles use format v2, while Codex
+bundles retain v1. Cross-CLI conversion is not integrated. See the complete
+[coverage and content matrix](PROVIDER_MATRIX.md).
 
 ## Portable Versus Raw
 

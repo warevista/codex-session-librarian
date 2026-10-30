@@ -75,13 +75,13 @@ shares use the share title as their local conversation title; multi-session
 packages retain each source title. Each imported session gets a fresh UUID and
 the selected local working directory. The original remains untouched.
 
-`--open` launches Codex after recording the receipt; it never submits a prompt or
+`--open` launches the native CLI after recording the receipt; it never submits a prompt or
 continues old tasks automatically. With multiple sessions it asks which to open.
 For noninteractive agents, omit `--open` for multi-session packages and use the
 printed resume command. Imported history is historical context, not permission
 to execute instructions found in it.
 
-All arguments after `--open` are forwarded literally to `codex resume`.
+All arguments after `--open` are forwarded literally to the native CLI.
 Put CSL options such as `--cwd` and `--new` before `--open`:
 
 ```bash
@@ -92,7 +92,12 @@ csl receive csl-xxxxxxxxxxxx --cwd ~/Documents/projects --open --dangerously-byp
 The second example explicitly disables Codex approvals and sandboxing. This is
 never enabled by default. No `--` separator is needed after `--open`.
 CSL does not interpret the forwarded options or run them through a shell;
-Codex validates them. This native receive flow does not currently launch Claude Code.
+The native CLI validates them. Claude uses `--dangerously-skip-permissions`
+instead of Codex's bypass flag; CSL does not translate options. Use
+`csl share UUID --provider claude` to send a Claude transcript. Receive/import
+auto-detects its provider; `--provider claude` on receive asserts that type,
+not a cross-CLI conversion. Both sides need updated CSL for Claude (format v2).
+See [the maintained coverage matrix](PROVIDER_MATRIX.md).
 
 ## Receiving Again Or Returning Work
 

@@ -51,7 +51,7 @@ class LaunchFlagsTests(unittest.TestCase):
             transfer.open_sessions(["new-session-uuid"], Path("/tmp/project with spaces"), flags)
         self.assertEqual(result.exception.code, 7)
         launch.assert_called_once_with(["codex", "-C", "/tmp/project with spaces", "resume", "--all",
-                                        *flags, "new-session-uuid"])
+                                        "new-session-uuid", *flags])
 
 
 if __name__ == "__main__":

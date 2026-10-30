@@ -1,5 +1,11 @@
 # Commands
 
+For native Claude export/import/share/receive, provider selection and forwarded
+launch flags, read [the command/provider matrix](PROVIDER_MATRIX.md).
+`csl capabilities --json` reports shipped coverage; `csl sessions --provider
+claude` lists native Claude sessions. The indexed librarian commands below
+remain Codex-only unless the matrix explicitly says otherwise.
+
 This is an LLM-native operator tool: the commands are designed so an assistant can inspect, summarize, trim, and reopen Codex sessions efficiently.
 
 This project has two layers:

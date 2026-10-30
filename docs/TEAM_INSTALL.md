@@ -4,8 +4,8 @@ This guide is for a teammate or another local agent using Codex Session Libraria
 
 ## What You Need
 
-- Codex installed and usable on the machine
-- Local Codex history under `~/.codex/`
+- Codex and/or Claude Code installed and usable for opening native sessions
+- Local history under `~/.codex/` and/or `~/.claude/` (home overrides supported)
 - Python 3.11 or newer available in the shell
 - `~/.local/bin` on `PATH` if installing to the default location
 
@@ -74,6 +74,18 @@ csl receive csl-xxxxxxxxxxxx --cwd ~/Documents/projects --open
 
 Use the ID printed by `share`/`inbox`. Receiving again reuses your existing copy;
 `--new` requests an independent copy. Read [SHARING.md](SHARING.md) for details.
+
+For Claude Code, discover and send with:
+
+```bash
+csl sessions --provider claude
+csl share CLAUDE_UUID --provider claude --title "Claude context"
+```
+
+Receive auto-detects the native CLI. Both teammates must update CSL for Claude
+packages. Put CSL options before `--open`, then pass native CLI flags after it.
+Only same-CLI handoffs are integrated; see [coverage matrix](PROVIDER_MATRIX.md)
+and `csl capabilities --json` before assuming a command supports both CLIs.
 
 ### Manual ZIP Transfer
 

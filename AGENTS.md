@@ -1,7 +1,8 @@
 # Codex Session Librarian
 
 CSL is a local Python 3.11+ standard-library tool for finding, cloning, and
-transferring native Codex conversations. Read `README.md` and the relevant
+transferring native Codex conversations, plus native Claude Code transfers.
+Read `README.md`, `docs/PROVIDER_MATRIX.md` and the relevant
 workflow under `docs/` before changing it.
 
 ## Session Transfers
@@ -10,7 +11,9 @@ workflow under `docs/` before changing it.
 - Team send: `csl share <UUID-or-name> --title "Topic"`.
 - Team discovery: `csl inbox --json` fetches metadata, not transcripts.
 - Team receive: `csl receive <share-id> --cwd <local-project> --open`.
-- All arguments after `--open` go literally to Codex. Put CSL options first;
+- Source commands default to Codex; use `--provider claude` for Claude export/share.
+- Receive/import auto-detect the native CLI; `--provider` asserts, not converts.
+- All arguments after `--open` go literally to the native CLI. Put CSL options first;
   never add sandbox/approval bypass flags unless the user explicitly requests them.
 - Repeat receives reuse the latest local copy; add `--new` only when requested.
 - Team packages must go to the private exchange, never the public tool repo.
@@ -42,3 +45,5 @@ workflow under `docs/` before changing it.
 - Verify changes with `python3 -m unittest discover -s tests -v`.
 - Keep actual histories, ZIP exports, credentials and local databases out of Git.
 - Updates: `git pull --ff-only`; the installed launcher is a symlink to this repo.
+- Keep `csl_capabilities.py` and `docs/PROVIDER_MATRIX.md` synchronized with commands.
+- Use isolated CODEX_HOME and CLAUDE_CONFIG_DIR for tests. Never add fixtures to personal histories.
