@@ -47,8 +47,19 @@ def read_records(stream):
         yield record
 
 
+def validate_compaction(record):
+    if record.get("type") != "compacted":
+        return
+    payload = record.get("payload", {})
+    history = payload.get("replacement_history")
+    metadata = payload.get("replacement_history_metadata")
+    if isinstance(history, list) and isinstance(metadata, list) and metadata and len(history) != len(metadata):
+        raise TransferError("Compaction history/metadata lengths differ; re-export the original session with updated CSL. This package cannot safely restore its active context.")
+
+
 def portable_record(record):
     """Drop encrypted reasoning; retain readable compaction and all messages/tools."""
+    validate_compaction(record)
     payload = record.get("payload", {})
 
     def encrypted_item(value):
@@ -355,6 +366,7 @@ def import_bundle(args, csl):
                         digest.update(line)
                         yield line
                 for record in read_records(checked_lines()):
+                    validate_compaction(record)
                     first_kind = first_kind or record.get("type")
                     metadata += record.get("type") == "session_meta"
                     payload = record.get("payload", {})

@@ -67,6 +67,9 @@ Imports adapt modern visible-message events for Codex's standalone history UI,
 without changing the model's message records. If an older import shows only
 timings or completion events, update CSL and receive it again with `--new`.
 The sender does not need to export the same package again.
+This applies to the display-only issue. Packages with inconsistent compaction
+history/metadata are rejected: the sender must re-export the original session
+with updated CSL, rather than re-share a damaged imported copy.
 
 `csl inbox --json` provides structured metadata for agents without downloading
 the conversations. `csl team status` checks your connection.

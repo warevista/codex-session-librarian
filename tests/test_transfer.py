@@ -118,6 +118,25 @@ class TransferTests(unittest.TestCase):
         self.assertIn(b'"encrypted_content": "cipher"', data)
         self.assertEqual(self.bundle.stat().st_mode & 0o777, 0o600)
 
+    def test_import_rejects_damaged_compaction_before_installing(self):
+        records = self.records(self.sid) + [
+            {"type": "compacted", "payload": {"message": "", "replacement_history": [
+                {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "retained"}]}],
+                "replacement_history_metadata": [{"client_authored": False}, {"client_authored": False}]}}
+        ]
+        self.source.write_text("".join(json.dumps(r) + "\n" for r in records))
+        self.export("--raw")
+        result = self.run_cli("import", self.bundle, "--cwd", self.cwd, ok=False)
+        self.assertIn("re-export the original session", result.stderr)
+        self.assertEqual(self.imported(), [])
+
+    def test_empty_compaction_metadata_uses_native_defaults(self):
+        record = {"type": "compacted", "payload": {"replacement_history": [
+            {"type": "message", "role": "user", "content": []}], "replacement_history_metadata": []}}
+        transfer.validate_compaction(record)
+        record["payload"].pop("replacement_history_metadata")
+        transfer.validate_compaction(record)
+
     def test_portable_compaction_keeps_parallel_metadata_aligned(self):
         original = {"type": "compacted", "payload": {"replacement_history": [
             {"type": "message", "role": "user", "content": "Keep first"},
