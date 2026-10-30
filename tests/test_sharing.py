@@ -28,6 +28,7 @@ class SharingTests(unittest.TestCase):
         self.releases = {}
         self.assets = {}
         self.patches = [
+            patch.dict(os.environ, {"CLAUDE_CONFIG_DIR": str(self.root / "claude")}),
             patch.object(csl, "DEFAULT_CODEX_HOME", self.home),
             patch.object(csl, "DEFAULT_SESSIONS_DIR", self.home / "sessions"),
             patch.object(csl, "DEFAULT_SESSION_INDEX", self.home / "session_index.jsonl"),
@@ -215,7 +216,7 @@ class SharingTests(unittest.TestCase):
         source.write_text("".join(json.dumps(row) + "\n" for row in fixture(sid)))
         with patch.dict(os.environ, {"CLAUDE_CONFIG_DIR": str(claude_home), "CLAUDE_CODE_PROJECT_DIR_NAME": "recipient"}):
             self.connect()
-            tag = self.command("share", sid, "--provider", "claude", "--title", "Claude handoff")
+            tag = self.command("share", sid, "--title", "Claude handoff")
             self.assertEqual(self.command("inbox", "--json")[0]["provider"], "claude")
             with patch.object(sharing.shutil, "which", return_value="/bin/claude"), \
                  patch.object(sharing, "open_sessions") as launch:
@@ -229,6 +230,20 @@ class SharingTests(unittest.TestCase):
             self.assertEqual(next(iter(receipt.values()))["provider"], "claude")
             self.assertEqual(len(self.imports()), 0)
             self.assertEqual(json.loads(source.read_text().splitlines()[0])["sessionId"], sid)
+
+    def test_ambiguous_share_requires_provider_before_upload(self):
+        from test_claude import fixture
+        source = self.root / "claude/projects/source" / f"{self.sid}.jsonl"
+        source.parent.mkdir(parents=True)
+        source.write_text("".join(json.dumps(row) + "\n" for row in fixture(self.sid)))
+        self.connect()
+        with self.assertRaises(SystemExit) as error, patch("sys.stderr", new_callable=io.StringIO) as stderr:
+            self.command("share", self.sid)
+        self.assertEqual(error.exception.code, 2)
+        self.assertIn("--provider codex or --provider claude", stderr.getvalue())
+        self.assertEqual(self.releases, {})
+        tag = self.command("share", self.sid, "--provider", "claude")
+        self.assertEqual(json.loads(self.releases[tag]["body"])["sessions"][0]["provider"], "claude")
 
     def test_cwd_change_requires_new_flag(self):
         tag = self.publish()

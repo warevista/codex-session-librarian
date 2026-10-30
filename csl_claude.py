@@ -66,22 +66,35 @@ def header(path, read_records):
     return {"id": sid, "title": title or sid, "cwd": cwd, "created_at": stamp, "provider": "claude"}
 
 
+def candidates(needle, read_records):
+    path = Path(needle).expanduser()
+    if path.is_file():
+        return [path.resolve()]
+    if re.fullmatch(r"[0-9a-fA-F-]{6,36}", needle):
+        return [p for p in paths() if p.stem.startswith(needle.lower())]
+    result = []
+    for path in paths():
+        try:
+            title = header(path, read_records)["title"]
+        except (ValueError, OSError) as exc:
+            import sys
+            print(f"Skipping Claude transcript {path.name}: {exc}", file=sys.stderr)
+            continue
+        if needle.casefold() in title.casefold():
+            result.append(path)
+    return result
+
+
 def resolve(needles, read_records):
     if not needles:
         raise ValueError("Specify a Claude session UUID or JSONL path; use csl sessions --provider claude")
     result = {}
     for needle in needles:
-        path = Path(needle).expanduser()
-        if path.is_file():
-            candidates = [path.resolve()]
-        elif re.fullmatch(r"[0-9a-fA-F-]{6,36}", needle):
-            candidates = [p for p in paths() if p.stem.startswith(needle.lower())]
-        else:
-            candidates = [p for p in paths() if needle.casefold() in header(p, read_records)["title"].casefold()]
-        if len(candidates) != 1:
-            raise ValueError(f"Claude session {needle!r}: {len(candidates)} matches; use a UUID or path")
-        info = header(candidates[0], read_records)
-        result[info["id"]] = (candidates[0], info)
+        matches = candidates(needle, read_records)
+        if len(matches) != 1:
+            raise ValueError(f"Claude session {needle!r}: {len(matches)} matches; use a UUID or path")
+        info = header(matches[0], read_records)
+        result[info["id"]] = (matches[0], info)
     return list(result.values())
 
 

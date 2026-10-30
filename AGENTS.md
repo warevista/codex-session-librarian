@@ -11,7 +11,8 @@ workflow under `docs/` before changing it.
 - Team send: `csl share <UUID-or-name> --title "Topic"`.
 - Team discovery: `csl inbox --json` fetches metadata, not transcripts.
 - Team receive: `csl receive <share-id> --cwd <local-project> --open`.
-- Source commands default to Codex; use `--provider claude` for Claude export/share.
+- Export/share auto-detect both local CLIs. Use `--provider` to restrict lookup;
+  cross-CLI ambiguity must stop and request it, never silently choose a provider.
 - Receive/import auto-detect the native CLI; `--provider` asserts, not converts.
 - All arguments after `--open` go literally to the native CLI. Put CSL options first;
   never add sandbox/approval bypass flags unless the user explicitly requests them.

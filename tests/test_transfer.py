@@ -25,7 +25,7 @@ class TransferTests(unittest.TestCase):
         self.home = self.root / "codex"
         self.cwd = self.root / "recipient project"
         self.cwd.mkdir()
-        self.env = {**os.environ, "CODEX_HOME": str(self.home)}
+        self.env = {**os.environ, "CODEX_HOME": str(self.home), "CLAUDE_CONFIG_DIR": str(self.root / "claude")}
         self.sid = str(uuid.uuid4())
         self.source = self.make_session(self.sid)
         self.bundle = self.root / "package.csl.zip"

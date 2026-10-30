@@ -94,7 +94,9 @@ never enabled by default. No `--` separator is needed after `--open`.
 CSL does not interpret the forwarded options or run them through a shell;
 The native CLI validates them. Claude uses `--dangerously-skip-permissions`
 instead of Codex's bypass flag; CSL does not translate options. Use
-`csl share UUID --provider claude` to send a Claude transcript. Receive/import
+`csl share UUID` to send either native transcript: source detection is automatic.
+If both histories match, CSL requests `--provider codex` or `--provider claude`.
+Use that flag as an optional explicit source filter. Receive/import
 auto-detects its provider; `--provider claude` on receive asserts that type,
 not a cross-CLI conversion. Both sides need updated CSL for Claude (format v2).
 See [the maintained coverage matrix](PROVIDER_MATRIX.md).

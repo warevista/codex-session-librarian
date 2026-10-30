@@ -77,9 +77,15 @@ CSL does not translate flags between CLIs.
 
 ```bash
 csl sessions --provider claude --query "backend"
-csl share CLAUDE_UUID --provider claude --title "Claude handoff"
-csl export CLAUDE_UUID --provider claude --to ~/Downloads
+csl share CLAUDE_UUID --title "Claude handoff"
+csl export CLAUDE_UUID --to ~/Downloads
 ```
+
+`share` and `export` also work without `--provider`: CSL searches both local
+histories and detects the CLI from the unique match. If both CLIs match, it
+stops and asks for `--provider codex` or `--provider claude`; within one CLI,
+use a more specific UUID or file path. Explicit `--provider` remains an optional
+lookup filter. File paths are detected from transcript contents, not filenames.
 
 Receive/import auto-detects the CLI from the package. All CSL options go before
 `--open`, then native CLI options follow:

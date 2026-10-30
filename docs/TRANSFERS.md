@@ -14,6 +14,12 @@ are rejected instead of silently choosing a conversation. Run `csl index` to
 refresh title-based discovery. Run `csl export` without selectors for an
 interactive numbered picker of indexed sessions.
 
+Without `--provider`, export searches Codex and Claude Code and detects the CLI
+from the unique match. For file paths, it reads the native record format rather
+than relying on the filename. Cross-CLI ambiguity requires `--provider codex`
+or `--provider claude`; within-CLI ambiguity requires a UUID or file path.
+Explicit `--provider` restricts lookup and never falls back to the other CLI.
+
 `--to` accepts a directory or an explicit `.zip` filename; it defaults to
 `~/Downloads`. Existing packages are never overwritten. Packages have local
 file permissions `0600`; ZIP contents are not encrypted.
@@ -59,7 +65,7 @@ No `--` separator is needed after `--open`. Forwarding
 `--dangerously-bypass-approvals-and-sandbox` explicitly disables Codex approvals
 and sandboxing; CSL does not enable it by default. The native importer supports
 both Codex and Claude Code for same-CLI transfers. Claude export uses
-`csl export UUID --provider claude --to ~/Downloads`; import detects the provider
+`csl export UUID --to ~/Downloads` (or explicitly `--provider claude`); import detects the provider
 from the bundle. Claude opens with `claude --resume UUID` in the requested local
 directory, and its explicit bypass flag is `--dangerously-skip-permissions`.
 Neither CLI's flags are translated. Claude bundles use format v2, while Codex

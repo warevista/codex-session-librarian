@@ -79,9 +79,11 @@ For Claude Code, discover and send with:
 
 ```bash
 csl sessions --provider claude
-csl share CLAUDE_UUID --provider claude --title "Claude context"
+csl share CLAUDE_UUID --title "Claude context"
 ```
 
+Share/export detect the source automatically; specify `--provider claude` or
+`--provider codex` only to restrict lookup or resolve cross-CLI ambiguity.
 Receive auto-detects the native CLI. Both teammates must update CSL for Claude
 packages. Put CSL options before `--open`, then pass native CLI flags after it.
 Only same-CLI handoffs are integrated; see [coverage matrix](PROVIDER_MATRIX.md)

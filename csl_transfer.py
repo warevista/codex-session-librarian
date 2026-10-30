@@ -184,7 +184,30 @@ def session_header(path, csl):
     raise TransferError(f"No session metadata: {path}")
 
 
-def resolve_sources(needles, csl, db, provider="codex"):
+def codex_candidates(needle, csl, conn):
+    candidates = []
+    # Archived/new sessions need not have been indexed yet.
+    if re.fullmatch(r"[0-9a-fA-F-]{6,36}", needle):
+        for root in [csl.DEFAULT_SESSIONS_DIR, csl.DEFAULT_CODEX_HOME / "archived_sessions"]:
+            candidates.extend(root.rglob(f"*{needle.lower()}*.jsonl"))
+    if not candidates:
+        rows = conn.execute("SELECT path FROM sessions WHERE instr(session_id, ?) > 0 "
+                            "OR instr(lower(thread_name), lower(?)) > 0", (needle, needle)).fetchall()
+        candidates = [Path(row["path"]) for row in rows if Path(row["path"]).is_file()]
+    return sorted(set(candidates))
+
+
+def detect_provider(path):
+    with path.open("rb") as stream:
+        for record in read_records(stream):
+            if record.get("type") == "session_meta":
+                return "codex"
+            if record.get("sessionId") and record.get("type") in ("user", "assistant", "system", "last-prompt", "custom-title"):
+                return "claude"
+    raise TransferError(f"Cannot identify a supported session CLI from {path}")
+
+
+def resolve_sources(needles, csl, db, provider=None):
     if provider == "claude":
         return csl_claude.resolve(needles, read_records)
     conn = csl.init_db(db.expanduser())
@@ -192,48 +215,44 @@ def resolve_sources(needles, csl, db, provider="codex"):
         if not needles:
             if not sys.stdin.isatty():
                 raise TransferError("Specify a session UUID, name, or JSONL path")
-            rows = conn.execute("SELECT session_id,thread_name FROM sessions "
+            rows = conn.execute("SELECT session_id,thread_name,path FROM sessions "
                                 "ORDER BY coalesce(updated_at,started_at) DESC LIMIT 30").fetchall()
             if not rows:
                 raise TransferError("No indexed sessions. Run csl index first")
             for i, row in enumerate(rows, 1):
-                print(f"{i:2}. {row['session_id']}  {row['thread_name']}")
+                print(f"{i:2}. [codex] {row['session_id']}  {row['thread_name']}")
             try:
                 picks = [int(n) for n in input("Sessions (numbers separated by spaces): ").split()]
                 if not picks or any(n < 1 or n > len(rows) for n in picks):
                     raise ValueError
-                needles = [rows[n - 1]["session_id"] for n in picks]
+                needles = [rows[n - 1]["path"] for n in picks]
             except ValueError as exc:
                 raise TransferError("Invalid session selection") from exc
         sources = {}
         for needle in needles:
             path = Path(needle).expanduser()
             if path.is_file():
-                candidates = [path.resolve()]
+                matches = [path.resolve()]
+                actual = provider or detect_provider(matches[0])
             else:
-                # Search filenames too: archived or newly created sessions may not be indexed.
-                candidates = []
-                if re.fullmatch(r"[0-9a-fA-F-]{6,36}", needle):
-                    for root in [csl.DEFAULT_SESSIONS_DIR, csl.DEFAULT_CODEX_HOME / "archived_sessions"]:
-                        candidates.extend(root.rglob(f"*{needle.lower()}*.jsonl"))
-                if not candidates:
-                    rows = conn.execute("SELECT path FROM sessions WHERE instr(session_id, ?) > 0 "
-                                        "OR instr(lower(thread_name), lower(?)) > 0",
-                                        (needle, needle)).fetchall()
-                    candidates = [Path(r["path"]) for r in rows if Path(r["path"]).is_file()]
-            candidates = sorted(set(candidates))
-            if len(candidates) != 1:
-                raise TransferError(f"Session {needle!r}: {len(candidates)} matches; use a UUID or path")
-            header = session_header(candidates[0], csl)
-            sources[header["id"]] = (candidates[0], header)
+                codex = codex_candidates(needle, csl, conn)
+                claude = csl_claude.candidates(needle, read_records) if provider is None else []
+                if codex and claude:
+                    raise TransferError(f"Ambiguous session {needle!r}: found in both Codex and Claude Code; specify --provider codex or --provider claude")
+                actual = "claude" if claude else "codex"
+                matches = claude or codex
+            if len(matches) != 1:
+                raise TransferError(f"Session {needle!r}: {len(matches)} matches; use a UUID or path")
+            header = (csl_claude.header(matches[0], read_records) if actual == "claude" else session_header(matches[0], csl))
+            sources[(actual, header["id"])] = (matches[0], header)
         return list(sources.values())
     finally:
         conn.close()
 
 
 def export_bundle(args, csl, *, quiet=False):
-    provider = getattr(args, "provider", None) or "codex"
-    sources = resolve_sources(args.sessions, csl, args.db, provider)
+    sources = resolve_sources(args.sessions, csl, args.db, getattr(args, "provider", None))
+    provider = selected_provider([header for _, header in sources])
     destination = args.to.expanduser()
     if not destination.name.lower().endswith(".zip"):
         if len(sources) == 1:
@@ -520,7 +539,7 @@ def add_commands(subparsers, csl):
     export.add_argument("sessions", nargs="*", help="UUIDs, unambiguous names, or JSONL paths; omit for a picker.")
     export.add_argument("--to", type=Path, default=Path.home() / "Downloads", help="Output directory or .zip path.")
     export.add_argument("--raw", action="store_true", help="Preserve encrypted reasoning instead of portable cleanup.")
-    export.add_argument("--provider", choices=("codex", "claude"), default="codex", help="Source CLI (default: codex).")
+    export.add_argument("--provider", choices=("codex", "claude"), help="Limit source lookup to one CLI (default: auto-detect both).")
     export.set_defaults(func=lambda args: run_transfer(args, csl))
     imp = subparsers.add_parser("import", help="Validate and install a session bundle with fresh local UUIDs.")
     imp.add_argument("bundle", type=Path)

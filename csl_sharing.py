@@ -121,7 +121,7 @@ def share(args, csl):
     with tempfile.TemporaryDirectory(prefix="csl-share-") as tmp:
         bundle = Path(tmp) / ASSET
         export_bundle(SimpleNamespace(sessions=args.sessions, to=bundle, raw=args.raw, db=args.db,
-                                      provider=getattr(args, "provider", "codex")),
+                                      provider=getattr(args, "provider", None)),
                       csl, quiet=True)
         if bundle.stat().st_size >= 2 * 1024**3:
             raise TransferError("GitHub release assets must be below 2 GiB; share fewer sessions per package")
@@ -367,7 +367,7 @@ def add_commands(subparsers, csl):
     share_parser.add_argument("sessions", nargs="*", help="Session selectors; omit for a local picker.")
     share_parser.add_argument("--title", help="Short title shown in the team inbox.")
     share_parser.add_argument("--raw", action="store_true", help="Keep encrypted reasoning (default: portable).")
-    share_parser.add_argument("--provider", choices=("codex", "claude"), default="codex", help="Source CLI (default: codex).")
+    share_parser.add_argument("--provider", choices=("codex", "claude"), help="Limit source lookup to one CLI (default: auto-detect both).")
     share_parser.set_defaults(func=lambda args: run_sharing(args, csl))
     inbox_parser = subparsers.add_parser("inbox", help="List shared snapshots without downloading transcripts.")
     inbox_parser.add_argument("--limit", type=positive_limit, default=20)

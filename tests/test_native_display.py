@@ -42,7 +42,7 @@ class NativeDisplayTests(unittest.TestCase):
                 {"type": "event_msg", "payload": {"type": "task_complete", "turn_id": turn, "last_agent_message": "placeholder"}},
             ]
             source.write_text("".join(json.dumps({"timestamp": stamp, **record}) + "\n" for record in records))
-            env = dict(os.environ, CODEX_HOME=str(home))
+            env = dict(os.environ, CODEX_HOME=str(home), CLAUDE_CONFIG_DIR=str(root / "claude"))
             for key in ("OPENAI_API_KEY", "CODEX_API_KEY", "ANTHROPIC_API_KEY"):
                 env.pop(key, None)
             cli = [sys.executable, str(Path(__file__).resolve().parents[1] / "codex_sessions.py")]

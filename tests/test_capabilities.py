@@ -30,3 +30,4 @@ class CapabilityTests(unittest.TestCase):
         self.assertEqual(report["commands"]["receive"]["claude"], "supported")
         self.assertEqual(report["commands"]["recall"]["claude"], "not-integrated")
         self.assertEqual(report["routes"]["codex->claude"], "not-integrated")
+        self.assertEqual(report["source_lookup"]["default"], "auto")

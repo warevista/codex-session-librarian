@@ -18,6 +18,9 @@ def coverage():
     for name in ("native-cut", "native-clone", "native-sanitize"):
         commands[name]["codex"] = "experimental"
     return {"schema_version": 1, "providers": ["codex", "claude"], "commands": commands,
+            "source_lookup": {"default": "auto", "commands": ["export", "share"],
+                              "cross_cli_ambiguity": "require --provider codex or --provider claude",
+                              "within_cli_ambiguity": "require a more specific UUID or file path"},
             "routes": {"codex->codex": "native", "claude->claude": "native",
                        "codex->claude": "not-integrated", "claude->codex": "not-integrated"},
             "authentication": "Recipient CLI owns authentication; CSL never copies credentials or selects billing accounts.",

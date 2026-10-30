@@ -55,7 +55,13 @@ context package; CSL does not buy model inference or generate a cloud summary.
 
 ## Commands For Each CLI
 
-Source commands default to Codex. Select Claude explicitly for discovery/export/share:
+`share` and `export` auto-detect the source CLI. They search both histories for
+UUIDs/prefixes and titles; an explicit JSONL path is detected from its contents.
+One match is selected automatically. Matches in both CLIs stop with a request
+for `--provider codex` or `--provider claude`, without exporting/uploading a package.
+Multiple matches within one CLI require a more specific UUID or file path.
+`--provider` remains an optional source filter, never a conversion request.
+Basic discovery with `sessions` still selects one CLI (default: Codex):
 
 ```bash
 csl sessions --provider codex
@@ -63,13 +69,19 @@ csl export CODEX_UUID --to ~/Downloads
 csl share CODEX_UUID --title "Codex handoff"
 
 csl sessions --provider claude --query "backend" --json
-csl export CLAUDE_UUID --provider claude --to ~/Downloads
+csl export CLAUDE_UUID --to ~/Downloads
+csl share CLAUDE_UUID --title "Claude handoff"
+# If the UUID/title also matches Codex:
 csl share CLAUDE_UUID --provider claude --title "Claude handoff"
 ```
 
 Both source adapters accept a UUID, unambiguous title or JSONL path (Codex title
 lookup requires its index). Claude UUID lookup excludes nested subagent files.
-Claude export without a selector requires one explicitly; Codex retains its picker.
+Without selectors the existing indexed Codex picker remains available and labels
+its entries as Codex; the chosen file path is unambiguous even if another CLI has
+the same UUID. `--provider claude` without a selector still requires a UUID/path
+(discover with `csl sessions --provider claude`). Mixed-provider batches remain
+unsupported; export/share them separately.
 
 The receiver auto-detects the native CLI from the validated package. An optional
 `--provider` asserts the expected CLI; it does **not** request conversion:
