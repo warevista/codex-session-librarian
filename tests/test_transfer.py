@@ -114,6 +114,42 @@ class TransferTests(unittest.TestCase):
         self.assertIn(b'"encrypted_content": "cipher"', data)
         self.assertEqual(self.bundle.stat().st_mode & 0o777, 0o600)
 
+    def test_portable_compaction_keeps_parallel_metadata_aligned(self):
+        original = {"type": "compacted", "payload": {"replacement_history": [
+            {"type": "message", "role": "user", "content": "Keep first"},
+            {"type": "compaction", "encrypted_content": "cipher"},
+            {"type": "message", "role": "assistant", "content": "Keep last"}],
+            "replacement_history_metadata": [{"position": 0}, {"position": 1}, {"position": 2}]}}
+        before = json.dumps(original, sort_keys=True)
+        cleaned, count = transfer.portable_record(original)
+        self.assertEqual(count, 1)
+        self.assertEqual(len(cleaned["payload"]["replacement_history"]), 2)
+        self.assertEqual(cleaned["payload"]["replacement_history_metadata"], [{"position": 0}, {"position": 2}])
+        self.assertEqual(json.dumps(original, sort_keys=True), before)
+
+    def test_wrapped_encrypted_items_keep_metadata_aligned(self):
+        original = {"type": "compacted", "payload": {"replacement_history": [
+            {"item": {"type": "reasoning", "encrypted_content": "cipher"}},
+            {"item": {"type": "message", "role": "user", "content": "Keep"}}],
+            "replacement_history_metadata": [{"position": 0}, {"position": 1}]}}
+        cleaned, _ = transfer.portable_record(original)
+        self.assertEqual(cleaned["payload"]["replacement_history_metadata"], [{"position": 1}])
+
+    def test_inconsistent_compaction_metadata_is_not_guessed(self):
+        damaged = {"type": "compacted", "payload": {"replacement_history": [
+            {"type": "message", "role": "user", "content": "Keep"}],
+            "replacement_history_metadata": [{"position": 0}, {"position": 1}]}}
+        with self.assertRaisesRegex(transfer.TransferError, "lengths differ"):
+            transfer.portable_record(damaged)
+
+    def test_application_history_fields_are_not_compaction_metadata(self):
+        record = {"type": "response_item", "payload": {"type": "function_call_output",
+            "call_id": "app", "output": {"replacement_history": [{"type": "entry"}],
+            "replacement_history_metadata": [{"index": 0}, {"index": 1}]}}}
+        cleaned, removed = transfer.portable_record(record)
+        self.assertEqual(cleaned, record)
+        self.assertEqual(removed, 0)
+
     def test_multiple_and_archived_sessions_without_index(self):
         sid = str(uuid.uuid4())
         self.make_session(sid, archived=True)

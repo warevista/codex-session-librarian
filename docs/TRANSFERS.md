@@ -54,6 +54,12 @@ Default export removes encrypted reasoning items and encrypted state fields,
 including nested reasoning in compaction histories. Readable compaction summaries,
 messages, tool calls, and tool results remain. Removing encrypted reasoning
 discards hidden reasoning state; this is not a byte-identical backup.
+Compaction history and its parallel per-item metadata are filtered together.
+Older CSL exports could leave these arrays misaligned, causing Codex to ignore
+checkpoints and replay excessive history. For an affected package, re-export from
+the original source using the corrected sender, or request a repaired new share;
+do not change an already-published share in place. A damaged portable copy cannot
+reliably reconstruct the removed metadata positions without its original source.
 
 ```bash
 csl export <uuid> --raw --to ~/Downloads/raw-history.csl.zip

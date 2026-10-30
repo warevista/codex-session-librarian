@@ -73,7 +73,17 @@ def portable_record(record):
             return result, removed
         if isinstance(value, dict):
             result, removed = {}, 0
+            history = value.get("replacement_history")
+            annotations = value.get("replacement_history_metadata")
+            keep = None
+            if (record.get("type") == "compacted" and value is payload
+                    and isinstance(history, list) and isinstance(annotations, list) and annotations):
+                if len(history) != len(annotations):
+                    raise TransferError("Compaction history/metadata lengths differ; export from the original session instead of a previously damaged portable copy")
+                keep = [i for i, entry in enumerate(history) if not encrypted_item(entry)]
             for key, item in value.items():
+                if key == "replacement_history_metadata" and keep is not None:
+                    item = [item[i] for i in keep]
                 if key == "encrypted_content" and (
                     value.get("type") in ("reasoning", "compaction")
                     or (record.get("type") == "compacted" and value is payload)
