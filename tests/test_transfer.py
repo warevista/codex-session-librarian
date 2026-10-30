@@ -303,7 +303,8 @@ class TransferTests(unittest.TestCase):
     def test_open_uses_new_uuid_local_cwd_and_no_shell(self):
         self.export()
         args = SimpleNamespace(bundle=self.bundle, cwd=self.cwd, list=False, open=True,
-                               name="Imported title", db=self.home / "test.sqlite")
+                               name="Imported title", db=self.home / "test.sqlite",
+                               open_args=["--model", "example-model"])
         with patch.object(csl, "DEFAULT_CODEX_HOME", self.home), \
              patch.object(csl, "DEFAULT_SESSIONS_DIR", self.home / "sessions"), \
              patch.object(csl, "DEFAULT_SESSION_INDEX", self.home / "session_index.jsonl"), \
@@ -315,6 +316,7 @@ class TransferTests(unittest.TestCase):
         self.assertEqual(result.exception.code, 0)
         argv, = launch.call_args.args
         self.assertEqual(argv[:5], ["codex", "-C", str(self.cwd), "resume", "--all"])
+        self.assertEqual(argv[5:7], ["--model", "example-model"])
         self.assertNotEqual(argv[-1], self.sid)
         self.assertFalse(launch.call_args.kwargs.get("shell", False))
 

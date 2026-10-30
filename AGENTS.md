@@ -10,6 +10,8 @@ workflow under `docs/` before changing it.
 - Team send: `csl share <UUID-or-name> --title "Topic"`.
 - Team discovery: `csl inbox --json` fetches metadata, not transcripts.
 - Team receive: `csl receive <share-id> --cwd <local-project> --open`.
+- All arguments after `--open` go literally to Codex. Put CSL options first;
+  never add sandbox/approval bypass flags unless the user explicitly requests them.
 - Repeat receives reuse the latest local copy; add `--new` only when requested.
 - Team packages must go to the private exchange, never the public tool repo.
 - Do not upload real conversation history for routine tests; use synthetic fixtures.

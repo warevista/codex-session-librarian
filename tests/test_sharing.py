@@ -188,9 +188,21 @@ class SharingTests(unittest.TestCase):
         with patch.object(sharing.shutil, "which", return_value="/bin/codex"), \
              patch.object(sharing, "open_sessions") as launch:
             ids = self.receive(tag, "--open")
-        launch.assert_called_once_with(ids, self.cwd)
+        launch.assert_called_once_with(ids, self.cwd, [])
         receipt = json.loads((sharing.state_dir(csl) / "received.json").read_text())
         self.assertEqual(next(iter(receipt.values()))["ids"], ids)
+
+    def test_receive_forwards_open_flags_for_new_and_reused_sessions(self):
+        tag = self.publish()
+        flags = ["--dangerously-bypass-approvals-and-sandbox", "--model", "example-model"]
+        with patch.object(sharing.shutil, "which", return_value="/bin/codex"), \
+             patch.object(sharing, "open_sessions") as launch:
+            ids = self.receive(tag, "--open", *flags)
+            launch.assert_called_once_with(ids, self.cwd, flags)
+            launch.reset_mock()
+            self.assertEqual(self.receive(tag, "--open", *flags), ids)
+            launch.assert_called_once_with(ids, self.cwd, flags)
+        self.assertEqual(len(self.imports()), 1)
 
     def test_cwd_change_requires_new_flag(self):
         tag = self.publish()

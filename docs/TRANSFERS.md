@@ -48,6 +48,18 @@ With multiple imported sessions it offers an interactive choice. For automation,
 omit `--open` on multi-session bundles and use the printed resume commands.
 Opening the session does not automatically request continuation of old tasks.
 
+Put all CSL options before `--open`; every subsequent argument is passed to
+`codex resume` literally, without shell evaluation:
+
+```bash
+csl import ~/Downloads/team-handoff.csl.zip --cwd ~/Documents/projects --open --model MODEL
+```
+
+No `--` separator is needed after `--open`. Forwarding
+`--dangerously-bypass-approvals-and-sandbox` explicitly disables Codex approvals
+and sandboxing; CSL does not enable it by default. The native importer currently
+supports Codex, not Claude Code.
+
 ## Portable Versus Raw
 
 Default export removes encrypted reasoning items and encrypted state fields,

@@ -18,7 +18,7 @@ from types import SimpleNamespace
 import uuid
 import zipfile
 
-from csl_transfer import TransferError, export_bundle, import_bundle, inspect_bundle, open_sessions, safe_text
+from csl_transfer import TransferError, add_open_argument, export_bundle, import_bundle, inspect_bundle, open_sessions, resume_command, safe_text
 
 SHARE_FORMAT = "csl-share"
 ASSET = "conversation.csl.zip"
@@ -309,16 +309,17 @@ def receive(args, csl):
                     raise TransferError("Package contents do not match the share metadata")
                 title = safe_text(release.get("name") or tag) if len(meta["sessions"]) == 1 else None
                 ids = import_bundle(SimpleNamespace(bundle=bundle, cwd=cwd, open=False, list=False,
-                                                    name=title, db=args.db), csl)
+                                                    name=title, db=args.db,
+                                                    open_args=getattr(args, "open_args", ())), csl)
                 paths = [str(next(csl.DEFAULT_SESSIONS_DIR.rglob(f"*{sid}.jsonl"))) for sid in ids]
                 receipts[key] = {"snapshot": fingerprint, "ids": ids, "paths": paths,
                                  "cwd": str(cwd), "received_at": csl.utc_now()}
                 save_json(receipt_path, receipts)
         else:
             for sid in ids:
-                print(f"open: {shlex.join(['codex', '-C', str(cwd), 'resume', '--all', sid])}")
+                print(f"open: {shlex.join(resume_command(sid, cwd, getattr(args, 'open_args', ())))}")
     if args.open:
-        open_sessions(ids, cwd)
+        open_sessions(ids, cwd, getattr(args, "open_args", ()))
     return ids
 
 
@@ -361,6 +362,6 @@ def add_commands(subparsers, csl):
     receive_parser = subparsers.add_parser("receive", help="Download/import a shared snapshot, reusing prior imports.")
     receive_parser.add_argument("share_id", nargs="?", help="ID from csl inbox; omit for a picker.")
     receive_parser.add_argument("--cwd", type=Path, default=Path.cwd())
-    receive_parser.add_argument("--open", action="store_true", help="Open the imported conversation in Codex.")
+    add_open_argument(receive_parser)
     receive_parser.add_argument("--new", action="store_true", help="Import a fresh independent copy even if already received.")
     receive_parser.set_defaults(func=lambda args: run_sharing(args, csl))

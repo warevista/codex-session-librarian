@@ -58,6 +58,18 @@ Use the actual `csl-xxxxxxxxxxxx` ID printed by `share` or `inbox`.
 The directory must exist locally. Omit `--open` to get the resume command
 without launching Codex. Omit the share ID for an interactive inbox picker.
 
+Put CSL options before `--open`. Everything after it is passed literally to
+Codex (also supported by `csl import`):
+
+```bash
+csl receive csl-SHARE_ID --cwd ~/Documents/projects --new --open --model MODEL
+```
+
+For an explicitly unsandboxed launch, append
+`--dangerously-bypass-approvals-and-sandbox` after `--open`. This disables Codex
+approvals and sandboxing; CSL never adds it automatically. The current native
+importer/launcher supports Codex, not Claude Code.
+
 Receiving the same snapshot again reuses your copy. Add `--new` to import
 another independent copy. Each continuation stays independent: this is a
 snapshot handoff, not live synchronization or automatic merging. Sharing a

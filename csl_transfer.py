@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import datetime as dt
 import hashlib
 import json
@@ -28,6 +29,22 @@ MAX_TOTAL = 4 * 1024**3
 
 class TransferError(ValueError):
     pass
+
+
+class OpenAction(argparse.Action):
+    def __call__(self, parser, namespace, values, option_string=None):
+        namespace.open = True
+        namespace.open_args = values
+
+
+def add_open_argument(parser):
+    parser.add_argument("--open", nargs=argparse.REMAINDER, action=OpenAction,
+                        help="Open in Codex; all following arguments are passed literally to Codex. Put CSL options first.")
+    parser.set_defaults(open=False, open_args=[])
+
+
+def resume_command(sid, cwd, open_args=()):
+    return ["codex", "-C", str(cwd), "resume", "--all", *open_args, sid]
 
 
 def safe_text(value):
@@ -403,15 +420,15 @@ def import_bundle(args, csl):
                 csl.register_native_session(conn, target, sid, title, now)
                 imported.append(sid)
                 print(f"imported: {sid} (source: {entry['id']})")
-                print(f"open: {shlex.join(['codex', '-C', str(cwd), 'resume', '--all', sid])}")
+                print(f"open: {shlex.join(resume_command(sid, cwd, getattr(args, 'open_args', ())))}")
         finally:
             conn.close()
     if args.open:
-        open_sessions(imported, cwd)
+        open_sessions(imported, cwd, getattr(args, "open_args", ()))
     return imported
 
 
-def open_sessions(imported, cwd):
+def open_sessions(imported, cwd, open_args=()):
     if not imported:
         raise TransferError("No imported sessions to open")
     selected = 0
@@ -424,7 +441,7 @@ def open_sessions(imported, cwd):
                 raise ValueError
         except ValueError as exc:
             raise TransferError("Sessions imported; invalid selection, use a printed resume command") from exc
-    raise SystemExit(subprocess.call(["codex", "-C", str(cwd), "resume", "--all", imported[selected]]))
+    raise SystemExit(subprocess.call(resume_command(imported[selected], cwd, open_args)))
 
 
 def run_transfer(args, csl):
@@ -445,7 +462,7 @@ def add_commands(subparsers, csl):
     imp.add_argument("bundle", type=Path)
     imp.add_argument("--cwd", type=Path, default=Path.cwd(), help="Local project directory (default: current directory).")
     mode = imp.add_mutually_exclusive_group()
-    mode.add_argument("--open", action="store_true", help="Launch codex resume after importing.")
+    add_open_argument(mode)
     mode.add_argument("--list", action="store_true", help="Validate and list contents without installing.")
     imp.add_argument("--name", help="Rename a single imported session.")
     imp.set_defaults(func=lambda args: run_transfer(args, csl))
