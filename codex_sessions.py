@@ -2778,6 +2778,8 @@ def build_parser() -> argparse.ArgumentParser:
     add_capability_commands(sub, sys.modules[__name__])
     from csl_conversion import add_commands as add_conversion_commands
     add_conversion_commands(sub, sys.modules[__name__])
+    from csl_live import add_commands as add_live_commands
+    add_live_commands(sub, sys.modules[__name__])
 
     p_index = sub.add_parser("index", help="Build or refresh the session index.")
     p_index.add_argument("--sessions-dir", type=Path, default=DEFAULT_SESSIONS_DIR)

@@ -5,6 +5,7 @@ import datetime as dt
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import tempfile
 import uuid
@@ -317,6 +318,21 @@ def validate(data):
     if any(key in data and not isinstance(data[key], dict) for key in ("source", "report")):
         raise ValueError("Canonical source/report must be objects")
     calls, results = {}, set()
+    media_bytes = projected_bytes = document_count = 0
+
+    def check_asset(block):
+        nonlocal media_bytes, projected_bytes, document_count
+        if not isinstance(block.get("sha256"), str) or not re.fullmatch(r"[0-9a-f]{64}", block["sha256"]):
+            raise ValueError("Canonical media requires a SHA-256 digest")
+        normalized = codec.blocks([block])[0]
+        media_bytes += len(normalized["data"]) * 3 // 4
+        if normalized["type"] == "document":
+            document_count += 1
+            projected_bytes += sum(len(page["png"]) * 3 // 4 for page in codec.pdf_assets.project(normalized))
+        else:
+            projected_bytes += len(normalized["data"]) * 3 // 4
+        if media_bytes > 32 * 1024 * 1024 or projected_bytes > 32 * 1024 * 1024 or document_count > 32:
+            raise ValueError("Conversation media exceeds aggregate byte/document limits")
     for event in data["events"]:
         if not isinstance(event, dict) or event.get("role") not in ("user", "assistant") or not isinstance(event.get("blocks"), list) or not event["blocks"]:
             raise ValueError("Invalid event role/blocks")
@@ -329,6 +345,8 @@ def validate(data):
                 raise ValueError("Canonical blocks must be objects")
             kind = block.get("type")
             allowed = {"text": {"type", "text", "references"},
+                       "image": {"type", "mime_type", "data", "sha256"},
+                       "document": {"type", "mime_type", "name", "data", "sha256"},
                        "tool_call": {"type", "call_id", "name", "arguments", "argument_format"},
                        "tool_result": {"type", "call_id", "content", "is_error"}}
             if kind in allowed and set(block) - allowed[kind]:
@@ -338,7 +356,9 @@ def validate(data):
                     raise ValueError("Text must be a string")
                 codec.blocks([block])
             elif kind in ("image", "document"):
-                raise ValueError("Image/PDF conversion is not integrated; use a native transfer instead")
+                if event["role"] != "user":
+                    raise ValueError("Assistant images/documents require an explicit output-asset adapter")
+                check_asset(block)
             elif kind == "tool_call":
                 key = block.get("call_id")
                 if not isinstance(key, str) or not key or not isinstance(block.get("name"), str) or not block["name"]:
@@ -359,9 +379,11 @@ def validate(data):
                     raise ValueError("Orphan/duplicate tool result or wrong role")
                 if not isinstance(block.get("content"), list):
                     raise ValueError("Canonical tool result content must be a block array")
-                if any(not isinstance(part, dict) or set(part) - {"type", "text", "references"} for part in block["content"]):
+                if any(not isinstance(part, dict) or part.get("type") not in ("text", "image", "document") or set(part) - allowed[part["type"]] for part in block["content"]):
                     raise ValueError("Unknown canonical tool-result content fields")
-                text_blocks(block["content"])
+                for part in text_blocks(block["content"]):
+                    if part["type"] in ("image", "document"):
+                        check_asset(part)
                 if not isinstance(block.get("is_error"), bool):
                     raise ValueError("Tool result error flag must be boolean")
                 results.add(key)
@@ -372,6 +394,8 @@ def validate(data):
 
 
 def atomic_text(path, serialized):
+    if len(serialized.encode("utf-8")) > 64 * 1024 * 1024:
+        raise ValueError("Serialized conversation exceeds 64 MiB; no partial conversion published")
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = None
@@ -491,7 +515,8 @@ def restore_codex(data, path, cwd, sid=None):
                                     "payload": {"type": "task_started", "turn_id": turn}})
                 records.append({"type": "event_msg", "timestamp": timestamp, "payload": {
                     "type": "user_message" if event["role"] == "user" else "agent_message", "message": text,
-                    **({"images": None, "local_images": [], "text_elements": []} if event["role"] == "user"
+                    **({"images": [b["image_url"] for b in pending if b.get("type") == "input_image"] or None,
+                        "local_images": [], "text_elements": []} if event["role"] == "user"
                        else {"phase": event.get("phase") or "final_answer"})}})
                 pending.clear()
                 pending_spans.clear()

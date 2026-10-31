@@ -86,12 +86,19 @@ Share/export detect the source automatically; specify `--provider claude` or
 `--provider codex` only to restrict lookup or resolve cross-CLI ambiguity.
 Receive auto-detects the native CLI. Both teammates must update CSL for Claude
 packages. Put CSL options before `--open`, then pass native CLI flags after it.
-Experimental text/tool conversion uses `--target codex` / `--target claude` on
+Experimental multimodal conversion uses `--target codex` / `--target claude` on
 receive/import, or `csl convert UUID --to CLI`. Check before continuing with
 `csl doctor UUID --native --json`; this reconstructs a request only against
 localhost, without a paid model call. See [conversion limits](CONVERSION.md)
 and [coverage matrix](PROVIDER_MATRIX.md)
 and `csl capabilities --json` before assuming a command supports both CLIs.
+
+For embedded image/PDF conversion, run `./install-media.sh` from the CSL repo.
+This creates a separate decoder venv, not global Python dependencies. Install
+bubblewrap and set `CSL_MEDIA_SANDBOX=required` when handling untrusted media.
+External attachments are not downloaded; see [limits](CONVERSION.md).
+Paid synthetic checks are optional and require separate test authentication:
+[live verification](LIVE_VERIFICATION.md). Ordinary sharing needs no test login.
 
 ### Manual ZIP Transfer
 

@@ -16,6 +16,7 @@ def coverage():
     commands = {name: {"codex": "supported", "claude": "not-integrated"} for name in CODEX_ONLY}
     commands.update({name: {"codex": "supported", "claude": "supported"} for name in SHARED})
     commands["convert"] = {"codex": "experimental", "claude": "experimental"}
+    commands["verify-live"] = {"codex": "experimental", "claude": "experimental"}
     for name in ("native-cut", "native-clone", "native-sanitize"):
         commands[name]["codex"] = "experimental"
     return {"schema_version": 1, "providers": ["codex", "claude"], "commands": commands,
@@ -23,12 +24,12 @@ def coverage():
                               "cross_cli_ambiguity": "require --provider codex or --provider claude",
                               "within_cli_ambiguity": "require a more specific UUID or file path"},
             "routes": {"codex->codex": "native", "claude->claude": "native",
-                       "codex->claude": "experimental-text-tools", "claude->codex": "experimental-text-tools"},
-            "canonical": {"format": "csl-conversation", "version": 2, "profile": "text-tools-references",
-                          "assets": "explicitly-rejected", "source_policy": "quarantined"},
+                       "codex->claude": "experimental-multimodal", "claude->codex": "experimental-multimodal"},
+            "canonical": {"format": "csl-conversation", "version": 2, "profile": "text-tools-references-images-pdf",
+                          "assets": "embedded-only-optional-decoder", "source_policy": "quarantined"},
             "continuity_checks": {"default_import": "structural-and-static-context",
                                   "doctor_native": "isolated-localhost-request-no-generation",
-                                  "live_continuation": "not-tested"},
+                                  "live_continuation": "opt-in-bounded-synthetic-suite"},
             "authentication": "Recipient CLI owns authentication; CSL never copies credentials or selects billing accounts.",
             "continuation": "Native file transfer is not a guarantee of model availability, context fit, or universal CLI-version compatibility."}
 

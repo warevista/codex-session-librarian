@@ -11,6 +11,11 @@ continuity evidence without claiming live inference. See [commands and safety
 contract](CONVERSION.md); use `--target` on import/receive for destination conversion,
 while `--provider` remains a source filter/assertion.
 
+`csl verify-live --allow-paid` runs bounded, synthetic model continuations in
+isolated histories, not your personal sessions. It requires explicit budgets and
+test credentials; see [live verification](LIVE_VERIFICATION.md) for setup,
+flags, measured coverage and limitations. Ordinary `doctor` remains model-free.
+
 This is an LLM-native operator tool: the commands are designed so an assistant can inspect, summarize, trim, and reopen Codex sessions efficiently.
 
 This project has two layers:

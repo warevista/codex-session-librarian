@@ -96,7 +96,7 @@ csl receive csl-SHARE_ID --cwd ~/work/project --provider claude --open --dangero
 ```
 
 Use your real share ID. `--provider` on receive/import asserts the source CLI,
-not conversion; `--target` explicitly converts it (experimental text/tools profile). Claude
+not conversion; `--target` explicitly converts it (experimental multimodal profile). Claude
 exports/shares require updated CSL on both sides. Search/recall/cut commands
 remain Codex-only; basic Claude discovery uses `sessions`. Inspect the full
 matrix with `csl capabilities` or `csl capabilities --json`.
@@ -110,12 +110,29 @@ csl convert SESSION_UUID --to canonical --out ~/Downloads/conversation.json
 csl doctor SESSION_UUID --native --json
 ```
 
-Conversion preserves supported text/tools through a versioned canonical format;
+Conversion preserves supported text/tools, references, embedded images and PDFs
+through a versioned canonical format;
 it rejects unsupported assets and opaque context instead of silently dropping
 them. Native imports print structural/context preflight evidence. `doctor --native`
 checks request reconstruction in isolated homes against localhost, without model
 generation or real credentials. It is not a claim of successful live recall or
 universal context fit. See [conversion and continuity](docs/CONVERSION.md).
+
+Image/PDF conversion requires the optional isolated decoder:
+
+```bash
+./install-media.sh
+```
+
+PNG, JPEG, static GIF and WebP are supported. PDFs retain their original bytes;
+Codex receives extracted text and rendered pages, including scanned pages.
+External paths/URLs/file IDs are not collected. For untrusted media, require
+Linux bubblewrap with `CSL_MEDIA_SANDBOX=required`; see the decoder limits in
+[conversion](docs/CONVERSION.md).
+
+`csl verify-live --allow-paid` separately tests synthetic continuations with
+explicit budgets and isolated histories. It is not run by ordinary transfers or
+`doctor`. See [setup, results and limits](docs/LIVE_VERIFICATION.md).
 
 Receiving the same snapshot again reuses your copy. Add `--new` to import
 another independent copy. Each continuation stays independent: this is a

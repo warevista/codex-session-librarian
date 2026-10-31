@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:csl-conversation:v2",
-  "title": "CSL canonical conversation v2: text, references and completed text tools",
+  "title": "CSL canonical conversation v2: text, tools, embedded images and PDF",
   "type": "object",
   "required": [
     "format",
@@ -74,6 +74,69 @@
             },
             "additionalProperties": false
           }
+        }
+      },
+      "additionalProperties": false
+    },
+    "image": {
+      "type": "object",
+      "required": [
+        "type",
+        "mime_type",
+        "data",
+        "sha256"
+      ],
+      "properties": {
+        "type": {
+          "const": "image"
+        },
+        "mime_type": {
+          "enum": [
+            "image/png",
+            "image/jpeg",
+            "image/gif",
+            "image/webp"
+          ]
+        },
+        "data": {
+          "type": "string",
+          "contentEncoding": "base64"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "document": {
+      "type": "object",
+      "required": [
+        "type",
+        "mime_type",
+        "name",
+        "data",
+        "sha256"
+      ],
+      "properties": {
+        "type": {
+          "const": "document"
+        },
+        "mime_type": {
+          "const": "application/pdf"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255
+        },
+        "data": {
+          "type": "string",
+          "contentEncoding": "base64"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
         }
       },
       "additionalProperties": false
@@ -153,7 +216,17 @@
         "content": {
           "type": "array",
           "items": {
-            "$ref": "#/$defs/text"
+            "oneOf": [
+              {
+                "$ref": "#/$defs/text"
+              },
+              {
+                "$ref": "#/$defs/image"
+              },
+              {
+                "$ref": "#/$defs/document"
+              }
+            ]
           }
         },
         "is_error": {
@@ -201,6 +274,12 @@
             "oneOf": [
               {
                 "$ref": "#/$defs/text"
+              },
+              {
+                "$ref": "#/$defs/image"
+              },
+              {
+                "$ref": "#/$defs/document"
               },
               {
                 "$ref": "#/$defs/call"

@@ -2,7 +2,7 @@
 
 CSL supports **native Codex -> Codex and Claude Code -> Claude Code handoffs**.
 Explicit experimental conversion in both directions is integrated through
-canonical v2 for text, references and completed text tools. See
+canonical v2 for text, references, completed tools, embedded images and PDFs. See
 [conversion and continuity](CONVERSION.md) for the exact profile and commands.
 "Provider" in CSL means the transcript/CLI adapter (`codex` or `claude`), not
 the model vendor, API endpoint, subscription or billing account.
@@ -50,6 +50,7 @@ registry. Update implementation, tests and this document in the same change.
 | `summarize` | supported | not-integrated |
 | `team` | supported | supported |
 | `timeline` | supported | not-integrated |
+| `verify-live` | experimental | experimental |
 | `why` | supported | not-integrated |
 
 `convert` is an experimental, fail-closed adapter rather than a universal format
@@ -61,7 +62,9 @@ native replay is opt-in with `doctor --native`.
 with `--query`; it is not full-history semantic search. Codex listing uses its
 existing index, refreshed with `csl index`. Inbox and team commands manage a
 shared exchange, not the CLI's own built-in picker. `summarize` prepares a local
-context package; CSL does not buy model inference or generate a cloud summary.
+context package; it does not buy model inference or generate a cloud summary.
+Only explicit `verify-live --allow-paid` performs budgeted synthetic model calls;
+see [live verification](LIVE_VERIFICATION.md).
 
 ## Commands For Each CLI
 
@@ -136,10 +139,12 @@ CLI. Forwarding a prompt or `--print` can explicitly start inference; plain
 | External attachments / repository / credentials | Not collected | Not collected |
 | Embedded content | Existing JSONL content preserved; no fetching | Existing message blocks preserved; no fetching |
 | Raw mode | Ciphertext may fail under a different account/model | Signed thinking may fail under a different account/model |
-| Cross-CLI conversion | Codex -> Claude: experimental text/tools/references | Claude -> Codex: experimental text/tools/references |
+| Cross-CLI conversion | Codex -> Claude: experimental text/tools/references/images/PDF | Claude -> Codex: experimental text/tools/references/images/PDF |
 
-Conversion rejects images/PDFs and unknown state in its current profile; native
-same-CLI preservation remains unchanged. Source policies are quarantined only
+Conversion supports bounded embedded images/PDFs with an optional isolated
+decoder; external assets, animated images, audio/video/SVG and unknown state
+remain unsupported. Native same-CLI preservation remains unchanged.
+Source policies are quarantined only
 by the canonical conversion path, not retroactively removed from native Codex
 history. Updated portable exports mark lost encrypted compaction state; exact
 conversion then requires readable state, or an explicit labeled visible recovery.
@@ -164,7 +169,7 @@ either CLI binary or a model login.
 | Backend/account mode | What CSL does | Verification scope |
 | --- | --- | --- |
 | Codex ChatGPT login or API/custom endpoint | Transfers native Codex records, leaves local auth/config alone | No guarantee that a source model is available to the recipient |
-| Claude subscription or Anthropic API | Transfers native Claude records, leaves local auth/config alone | Native loader tested against localhost with a fake key; no paid-provider claim |
+| Claude subscription or Anthropic API | Transfers native Claude records, leaves local auth/config alone | Localhost loader tested; synthetic live suite additionally checked Anthropic API, not subscription routing |
 | Claude Bedrock / Vertex / Foundry | Same native adapter; local CLI owns routing/auth | Backend-specific continuation not tested by CSL |
 | Other CLIs | No adapter | Not supported |
 
@@ -179,6 +184,10 @@ turns through app-server; the Claude check captures a reconstructed message requ
 on localhost and stops before generation. They establish loader behavior, not
 successful paid inference, universal context fit, or full recovery of hidden state.
 This integration was checked with Codex 0.166.0 and Claude Code 2.1.308 on Linux.
+Separately, 22/22 explicitly authorized synthetic live checks passed using Codex
+ChatGPT login and Claude Anthropic API, including media and second-generation
+roundtrips. This is bounded evidence, not every account/backend/version or
+universal context fit. See [results and reproduction](LIVE_VERIFICATION.md).
 
 ```bash
 python3 -m unittest discover -s tests -q

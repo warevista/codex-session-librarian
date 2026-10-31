@@ -2,8 +2,10 @@
 
 CSL integrates a bounded, experimental Codex/Claude conversion profile through
 `csl-conversation` version 2. This is native transcript reconstruction, not a
-generated summary pasted into a new conversation. It uses only the standard
-library and never fetches credentials or buys model inference.
+generated summary pasted into a new conversation. The core uses only the standard
+library. Conversion never fetches credentials or buys model inference; optional
+media decoding uses a separate interpreter. Explicit paid verification is a
+different command, documented in [live verification](LIVE_VERIFICATION.md).
 
 ## Convert And Receive
 
@@ -33,7 +35,7 @@ csl convert ~/Downloads/conversation.json --to claude --cwd ~/work/project
 ```
 
 Canonical outputs are private `0600` files and cannot overwrite existing files.
-The [v2 JSON Schema](canonical-v2.schema.json) describes the text/tools profile.
+The [v2 JSON Schema](canonical-v2.schema.json) describes the multimodal profile.
 Canonical JSON is not itself a `.csl.zip` or GitHub release asset; use native
 share/receive with `--target`, or transfer that JSON privately and use convert.
 
@@ -60,8 +62,9 @@ select an available recipient model via `--open --model MODEL` when needed.
 
 The following do not silently degrade into an apparently faithful conversion:
 
-- Images, PDFs, external attachments and unknown content blocks are rejected in
-  this profile. Native same-CLI transfers still preserve their existing JSONL.
+- External URL/path/file-ID attachments, audio/video/SVG, animated images and
+  unknown content blocks are rejected. Native same-CLI transfers still preserve
+  their existing JSONL; they do not collect missing external assets.
 - Opaque encrypted compaction cannot be decoded. Updated portable exports mark
   removed compaction state even if an entire checkpoint disappeared. Exact
   active-context conversion then fails, rather than resurrecting older history.
@@ -77,6 +80,34 @@ The following do not silently degrade into an apparently faithful conversion:
 Conversion and diagnostic analysis currently have a 64 MiB per-transcript limit.
 Large native Codex transfers retain their existing limits, but get an explicit
 analysis-limit warning instead of a misleading continuity certification.
+
+## Embedded Images And PDFs
+
+Run `./install-media.sh` once to install pinned Pillow/PDFium dependencies in
+`~/.local/share/csl/media-venv`. Set `CSL_MEDIA_PYTHON=/absolute/venv/bin/python`
+for a different dedicated interpreter. Core commands do not import these packages.
+
+User images (PNG/JPEG/static GIF/WebP), user PDFs and images/PDFs in tool results
+retain original bytes and SHA-256 in canonical metadata. Claude user PDFs remain
+native documents. Codex PDFs and tool PDFs become extracted text plus page PNGs;
+scanned pages remain visible. Hash-bound projections detect edits/substitutions
+on reconversion instead of silently claiming original retention. Assistant-output
+assets are not supported by this profile.
+
+Limits: 8 MiB per original asset, 32 MiB aggregate original media and 32 MiB
+projected media, 32 documents, 20 pages per PDF, 200,000 extracted characters per
+PDF; images are at most 8192 pixels per dimension and 20 million pixels. PDF pages
+render at up to 1600 pixels/96 dpi. Corrupt/protected PDFs fail explicitly.
+Serialized canonical output is limited to 64 MiB.
+
+Decoding uses a disposable directory, minimal credential-free environment,
+15-second wall timeout, 8 CPU seconds and 1 GiB address-space limit. On Linux,
+`CSL_MEDIA_SANDBOX=auto` (default) uses bubblewrap when installed: no network,
+read-only decoder/runtime mounts, no user home/project/auth mounts. Set
+`CSL_MEDIA_SANDBOX=required` for untrusted inputs; absence or namespace failure
+then fails closed. If bubblewrap is absent, auto warns and uses process/resource
+isolation only, which is **not an OS security sandbox**. Explicit `process` is
+for trusted inputs or CI. Keep decoder dependencies/security patches maintained.
 
 ## Diagnose Before Continuing
 
@@ -137,3 +168,13 @@ Synthetic tests cover all four routes, corrected decisions, tool-only facts,
 source-policy quarantine, canonical restore, explicit recovery/repair, receiver
 cache separation and size guards. Native tests capture requests in both CLIs
 without paid endpoints. The public coverage matrix remains synchronized by tests.
+
+Optional decoder/schema tests (synthetic only):
+
+```bash
+~/.local/share/csl/media-venv/bin/python -m pip install -r media-test-requirements.txt
+CSL_RUN_MEDIA_TESTS=1 CSL_MEDIA_SANDBOX=required ~/.local/share/csl/media-venv/bin/python -m unittest discover -s tests -q
+```
+
+See [live verification](LIVE_VERIFICATION.md) for the separately authorized,
+budgeted model continuations and measured results.

@@ -93,7 +93,7 @@ class BridgeTests(unittest.TestCase):
         schema = json.loads((Path(__file__).resolve().parents[1] / "docs/canonical-v2.schema.json").read_text())
         self.assertEqual(schema["properties"]["format"]["const"], bridge.FORMAT)
         self.assertEqual(schema["properties"]["version"]["const"], bridge.VERSION)
-        self.assertNotIn("image", schema["$defs"])
+        self.assertIn("image", schema["$defs"])
 
     def test_duplicate_keys_and_nonfinite_json_rejected(self):
         for value in ('{"type":"user","type":"assistant"}', '{"value":NaN}', '{"value":Infinity}'):

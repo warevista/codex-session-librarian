@@ -152,7 +152,7 @@ class ConversionCliTests(unittest.TestCase):
         self.records[2]["payload"]["content"].append({"type": "input_image", "image_url": "https://invalid.test/not-fetched"})
         self.write_source()
         result = self.cli("convert", self.sid, "--to", "claude", "--cwd", self.cwd, ok=False)
-        self.assertIn("explicit adapter", result.stderr)
+        self.assertIn("explicit asset packaging", result.stderr)
 
     def test_doctor_reports_levels_and_does_not_mutate(self):
         before = self.source.read_bytes()
