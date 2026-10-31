@@ -9,20 +9,26 @@ import csl_claude
 CODEX_ONLY = ("index", "search", "recent", "show", "related", "find-work", "patches", "pinpoint", "recall",
               "why", "summarize", "annotate", "queue", "cockpit", "timeline", "cut", "native-cut", "native-clone",
               "native-sanitize", "stats")
-SHARED = ("export", "import", "share", "receive", "inbox", "team", "sessions", "capabilities")
+SHARED = ("export", "import", "share", "receive", "inbox", "team", "sessions", "capabilities", "doctor")
 
 
 def coverage():
     commands = {name: {"codex": "supported", "claude": "not-integrated"} for name in CODEX_ONLY}
     commands.update({name: {"codex": "supported", "claude": "supported"} for name in SHARED})
+    commands["convert"] = {"codex": "experimental", "claude": "experimental"}
     for name in ("native-cut", "native-clone", "native-sanitize"):
         commands[name]["codex"] = "experimental"
     return {"schema_version": 1, "providers": ["codex", "claude"], "commands": commands,
-            "source_lookup": {"default": "auto", "commands": ["export", "share"],
+            "source_lookup": {"default": "auto", "commands": ["export", "share", "convert", "doctor"],
                               "cross_cli_ambiguity": "require --provider codex or --provider claude",
                               "within_cli_ambiguity": "require a more specific UUID or file path"},
             "routes": {"codex->codex": "native", "claude->claude": "native",
-                       "codex->claude": "not-integrated", "claude->codex": "not-integrated"},
+                       "codex->claude": "experimental-text-tools", "claude->codex": "experimental-text-tools"},
+            "canonical": {"format": "csl-conversation", "version": 2, "profile": "text-tools-references",
+                          "assets": "explicitly-rejected", "source_policy": "quarantined"},
+            "continuity_checks": {"default_import": "structural-and-static-context",
+                                  "doctor_native": "isolated-localhost-request-no-generation",
+                                  "live_continuation": "not-tested"},
             "authentication": "Recipient CLI owns authentication; CSL never copies credentials or selects billing accounts.",
             "continuation": "Native file transfer is not a guarantee of model availability, context fit, or universal CLI-version compatibility."}
 

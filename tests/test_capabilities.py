@@ -29,5 +29,5 @@ class CapabilityTests(unittest.TestCase):
         report = json.loads(output.getvalue())
         self.assertEqual(report["commands"]["receive"]["claude"], "supported")
         self.assertEqual(report["commands"]["recall"]["claude"], "not-integrated")
-        self.assertEqual(report["routes"]["codex->claude"], "not-integrated")
+        self.assertEqual(report["routes"]["codex->claude"], "experimental-text-tools")
         self.assertEqual(report["source_lookup"]["default"], "auto")

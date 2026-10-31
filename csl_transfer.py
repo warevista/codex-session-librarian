@@ -78,11 +78,12 @@ def safe_text(value):
 
 
 def read_records(stream):
+    from csl_canonical import strict_json
     for number, line in enumerate(stream, 1):
         if not line.strip():
             continue
         try:
-            record = json.loads(line)
+            record = strict_json(line)
         except (ValueError, UnicodeError) as exc:
             raise TransferError(f"Invalid JSONL at line {number}") from exc
         if not isinstance(record, dict):
@@ -94,10 +95,39 @@ def validate_compaction(record):
     if record.get("type") != "compacted":
         return
     payload = record.get("payload", {})
+    if not isinstance(payload, dict):
+        raise TransferError("Compaction payload must be an object")
     history = payload.get("replacement_history")
     metadata = payload.get("replacement_history_metadata")
+    if history is not None and not isinstance(history, list):
+        raise TransferError("Compaction replacement history must be an array")
+    if metadata is not None and not isinstance(metadata, list):
+        raise TransferError("Compaction metadata must be an array")
+    for value in history or []:
+        item = value.get("item", value) if isinstance(value, dict) else None
+        if not isinstance(item, dict) or not isinstance(item.get("type"), str):
+            raise TransferError("Malformed compaction replacement item")
     if isinstance(history, list) and isinstance(metadata, list) and metadata and len(history) != len(metadata):
         raise TransferError("Compaction history/metadata lengths differ; re-export the original session with updated CSL. This package cannot safely restore its active context.")
+
+
+def has_opaque_compaction(record):
+    payload = record.get("payload", {})
+    if not isinstance(payload, dict):
+        return False
+    if record.get("type") == "compacted":
+        if payload.get("encrypted_content"):
+            return True
+        values = payload.get("replacement_history") or []
+    elif record.get("type") == "response_item":
+        values = [payload]
+    else:
+        return False
+    for value in values:
+        item = value.get("item", value) if isinstance(value, dict) else None
+        if isinstance(item, dict) and item.get("type") in ("compaction", "compaction_summary", "context_compaction") and "encrypted_content" in item:
+            return True
+    return False
 
 
 def portable_record(record):
@@ -128,6 +158,8 @@ def portable_record(record):
                     removed += count
             return result, removed
         if isinstance(value, dict):
+            if value.get("type") in ("function_call", "custom_tool_call", "function_call_output", "custom_tool_call_output"):
+                return value, 0
             result, removed = {}, 0
             history = value.get("replacement_history")
             annotations = value.get("replacement_history_metadata")
@@ -153,6 +185,8 @@ def portable_record(record):
         return value, 0
 
     cleaned, count = clean(record)
+    if record.get("type") == "compacted" and has_opaque_compaction(record):
+        cleaned["csl_portable_compaction"] = {"opaque_summary_removed": True}
     if (record.get("type") == "compacted" and count and
             cleaned.get("payload", {}).get("replacement_history") == []):
         if not cleaned["payload"].get("message"):
@@ -276,6 +310,7 @@ def export_bundle(args, csl, *, quiet=False):
                 member = f"sessions/{header['id']}.jsonl"
                 digest = hashlib.sha256()
                 size = removed = messages = records = metadata = 0
+                compaction_state_removed = False
                 # Bound the snapshot at the original file length; a partial final append is omitted.
                 with path.open("rb") as source, archive.open(member, "w", force_zip64=True) as target:
                     remaining = os.fstat(source.fileno()).st_size
@@ -303,6 +338,7 @@ def export_bundle(args, csl, *, quiet=False):
                         if provider == "claude":
                             messages += record.get("type") in ("user", "assistant")
                         if not args.raw:
+                            compaction_state_removed |= provider == "codex" and has_opaque_compaction(record)
                             record, count = (csl_claude.portable_record(record) if provider == "claude" else portable_record(record))
                             removed += count
                             if record is None:
@@ -319,7 +355,8 @@ def export_bundle(args, csl, *, quiet=False):
                     raise TransferError(f"Session {header['id']} has no local conversation history; metadata alone cannot be exported")
                 manifest["sessions"].append({**header, "file": member, "bytes": size,
                                              "sha256": digest.hexdigest(), "records": records,
-                                             "encrypted_items_removed": removed})
+                                             "encrypted_items_removed": removed,
+                                             **({"compaction_state_removed": True} if compaction_state_removed else {})})
             archive.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2))
         os.chmod(staged, 0o600)
         # Atomic, exclusive publication: even concurrent exports cannot overwrite a package.
@@ -354,6 +391,8 @@ def inspect_bundle(archive):
             raise TransferError("Invalid session entry")
         if entry.get("provider", "codex") not in ("codex", "claude"):
             raise TransferError("Unsupported session provider")
+        if "compaction_state_removed" in entry and not isinstance(entry["compaction_state_removed"], bool):
+            raise TransferError("Invalid compaction portability flag")
         if entry.get("provider", "codex") == "claude" and manifest["version"] != 2:
             raise TransferError("Claude bundles require format version 2")
         sid = entry.get("id")
@@ -398,6 +437,8 @@ def rewrite_import_record(record, sid, entry, cwd, now):
             payload["session_id"] = sid
         # Rebuild a local legacy replay; source account identities/pagination aren't portable.
         payload["history_mode"] = "legacy"
+        if entry.get("compaction_state_removed"):
+            payload["csl_portability"] = {"compaction_state_removed": True}
         for key in ("creator_user_id", "creator_account_id", "context_window", "runtime_workspace_roots",
                     "history_base", "forked_from_ordinal_exclusive"):
             payload.pop(key, None)
@@ -418,6 +459,11 @@ def import_bundle(args, csl):
         manifest = inspect_bundle(archive)
         entries = manifest["sessions"]
         provider = selected_provider(entries, getattr(args, "provider", None))
+        if getattr(args, "target", None):
+            from csl_conversion import convert_bundle
+            return convert_bundle(args, csl, archive, manifest)
+        if getattr(args, "leaf", None) or getattr(args, "repair_interrupted", False) or getattr(args, "history_policy", "active") != "active":
+            raise TransferError("History selection/repair requires --target (explicit conversion)")
         if args.open and not shutil.which(provider):
             raise TransferError(f"{provider} is not on PATH; install it or omit --open")
         if args.open and len(entries) > 1 and not sys.stdin.isatty():
@@ -482,6 +528,8 @@ def import_bundle(args, csl):
                 print(f"visible-history projection: {display.get('user_message', 0)} user, {display.get('agent_message', 0)} assistant messages")
             if source_bases:
                 print("Note: source fork references an inherited parent history; this import includes only the records present in this package, not missing parent files.")
+            from csl_diagnostics import preflight
+            preflight(local, provider, max_context_chars=getattr(args, "max_context_chars", None))
         if args.list:
             print("Package validated; no sessions installed.")
             return
@@ -549,4 +597,6 @@ def add_commands(subparsers, csl):
     mode.add_argument("--list", action="store_true", help="Validate and list contents without installing.")
     imp.add_argument("--name", help="Rename a single imported session.")
     imp.add_argument("--provider", choices=("codex", "claude"), help="Require this native CLI; defaults to the package provider, not conversion.")
+    from csl_conversion import add_conversion_options
+    add_conversion_options(imp)
     imp.set_defaults(func=lambda args: run_transfer(args, csl))

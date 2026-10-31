@@ -134,12 +134,12 @@ def share(args, csl):
         receipts = read_json(state_dir(csl) / "received.json", {})
         source_ids = {entry["id"] for entry in manifest["sessions"]}
         source_provider = selected_provider(manifest["sessions"])
-        parents = [key.rsplit("/", 1)[1] for key, receipt in receipts.items()
+        parents = [receipt.get("share_id", key.rsplit("/", 1)[1].split("@", 1)[0]) for key, receipt in receipts.items()
                    if key.startswith(repo.lower() + "/") and source_ids.intersection(receipt.get("ids", []))
                    and receipt.get("provider", "codex") == source_provider]
         metadata = {"format": SHARE_FORMAT, "version": manifest["version"], "asset": ASSET,
                     "sha256": file_sha256(bundle), "bytes": bundle.stat().st_size,
-                    "continues": sorted(parents),
+                    "continues": sorted(set(parents)),
                     "mode": manifest["mode"], "sessions": [
                         {"id": s["id"], "title": s["title"], **({"provider": s["provider"]} if "provider" in s else {})}
                         for s in manifest["sessions"]]}
@@ -280,14 +280,21 @@ def receive(args, csl):
     release = gh_json(["api", "--hostname", "github.com", f"repos/{repo}/releases/tags/{tag}"])
     meta, asset = release_metadata(release)
     provider = selected_provider(meta["sessions"], getattr(args, "provider", None))
-    if args.open and not shutil.which(provider):
-        raise TransferError(f"{provider} is not on PATH; omit --open or install it")
+    destination_provider = getattr(args, "target", None) or provider
+    if not getattr(args, "target", None) and (getattr(args, "leaf", None) or getattr(args, "repair_interrupted", False) or getattr(args, "history_policy", "active") != "active"):
+        raise TransferError("History selection/repair requires --target (explicit conversion)")
+    if args.open and not shutil.which(destination_provider):
+        raise TransferError(f"{destination_provider} is not on PATH; omit --open or install it")
     if release["tag_name"] != tag:
         raise TransferError("GitHub returned a different share identity")
     if args.open and len(meta["sessions"]) > 1 and not sys.stdin.isatty():
         raise TransferError("--open with several sessions needs an interactive terminal")
     fingerprint = {"sha256": meta["sha256"], "release_id": release["id"], "asset_id": asset["id"]}
     key = f"{repo.lower()}/{tag}"
+    if getattr(args, "target", None):
+        route = {"target": args.target, "history_policy": args.history_policy,
+                 "leaf": args.leaf, "repair_interrupted": args.repair_interrupted, "canonical_version": 2}
+        key += "@" + hashlib.sha256(json.dumps(route, sort_keys=True).encode()).hexdigest()[:16]
     receipt_path = state_dir(csl) / "received.json"
     with receive_lock(csl):
         receipts = read_json(receipt_path, {})
@@ -297,8 +304,8 @@ def receive(args, csl):
             if previous.get("snapshot") != fingerprint:
                 raise TransferError("Shared snapshot changed remotely; publish it under a new share ID")
             paths = [Path(p) for p in previous.get("paths", [])]
-            allowed_root = csl_claude.projects().resolve() if provider == "claude" else csl.DEFAULT_SESSIONS_DIR.resolve()
-            existing = (previous.get("provider", "codex") == provider and bool(paths)
+            allowed_root = csl_claude.projects().resolve() if destination_provider == "claude" else csl.DEFAULT_SESSIONS_DIR.resolve()
+            existing = (previous.get("provider", "codex") == destination_provider and bool(paths)
                         and all(p.is_file() and p.resolve().is_relative_to(allowed_root) for p in paths))
             if existing and not args.new:
                 if previous["cwd"] != str(cwd):
@@ -322,17 +329,26 @@ def receive(args, csl):
                 title = safe_text(release.get("name") or tag) if len(meta["sessions"]) == 1 else None
                 ids = import_bundle(SimpleNamespace(bundle=bundle, cwd=cwd, open=False, list=False,
                                                     name=title, db=args.db,
-                                                    open_args=getattr(args, "open_args", ()), provider=provider), csl)
-                paths = [str(installed_path(sid, cwd, provider, csl)) for sid in ids]
+                                                    open_args=getattr(args, "open_args", ()), provider=provider,
+                                                    target=getattr(args, "target", None),
+                                                    leaf=getattr(args, "leaf", None),
+                                                    history_policy=getattr(args, "history_policy", "active"),
+                                                    repair_interrupted=getattr(args, "repair_interrupted", False),
+                                                    max_context_chars=getattr(args, "max_context_chars", None)), csl)
+                paths = [str(installed_path(sid, cwd, destination_provider, csl)) for sid in ids]
                 receipts[key] = {"snapshot": fingerprint, "ids": ids, "paths": paths,
-                                 "cwd": str(cwd), "received_at": csl.utc_now(), "provider": provider}
+                                 "cwd": str(cwd), "received_at": csl.utc_now(), "provider": destination_provider,
+                                 "share_id": tag}
                 save_json(receipt_path, receipts)
         else:
+            from csl_diagnostics import preflight
+            for path in paths:
+                preflight(path, destination_provider, max_context_chars=getattr(args, "max_context_chars", None))
             for sid in ids:
-                command = shlex.join(resume_command(sid, cwd, getattr(args, 'open_args', ()), provider))
-                print(f"open: {'cd ' + shlex.quote(str(cwd)) + ' && ' if provider == 'claude' else ''}{command}")
+                command = shlex.join(resume_command(sid, cwd, getattr(args, 'open_args', ()), destination_provider))
+                print(f"open: {'cd ' + shlex.quote(str(cwd)) + ' && ' if destination_provider == 'claude' else ''}{command}")
     if args.open:
-        open_sessions(ids, cwd, getattr(args, "open_args", ()), provider)
+        open_sessions(ids, cwd, getattr(args, "open_args", ()), destination_provider)
     return ids
 
 
@@ -379,4 +395,6 @@ def add_commands(subparsers, csl):
     add_open_argument(receive_parser)
     receive_parser.add_argument("--new", action="store_true", help="Import a fresh independent copy even if already received.")
     receive_parser.add_argument("--provider", choices=("codex", "claude"), help="Require the package's native CLI; not a conversion option.")
+    from csl_conversion import add_conversion_options
+    add_conversion_options(receive_parser)
     receive_parser.set_defaults(func=lambda args: run_sharing(args, csl))

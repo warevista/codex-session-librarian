@@ -101,6 +101,13 @@ auto-detects its provider; `--provider claude` on receive asserts that type,
 not a cross-CLI conversion. Both sides need updated CSL for Claude (format v2).
 See [the maintained coverage matrix](PROVIDER_MATRIX.md).
 
+Use `--target codex` or `--target claude` before `--open` for an explicit
+experimental canonical conversion at receive time. Source provider assertions
+still refer to the package. Native and converted receives have separate receipts;
+the same route reuses its own copy, while `--new` requests another independent one.
+All receives, including reused copies, apply continuity preflight and explicit
+`--max-context-chars` budgets. See [conversion and diagnostics](CONVERSION.md).
+
 ## Receiving Again Or Returning Work
 
 ```bash

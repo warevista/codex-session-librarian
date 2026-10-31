@@ -69,7 +69,9 @@ both Codex and Claude Code for same-CLI transfers. Claude export uses
 from the bundle. Claude opens with `claude --resume UUID` in the requested local
 directory, and its explicit bypass flag is `--dangerously-skip-permissions`.
 Neither CLI's flags are translated. Claude bundles use format v2, while Codex
-bundles retain v1. Cross-CLI conversion is not integrated. See the complete
+bundles retain v1. `--target codex` or `--target claude` explicitly enables the
+experimental canonical conversion profile before import. See [conversion and
+continuity](CONVERSION.md) and the complete
 [coverage and content matrix](PROVIDER_MATRIX.md).
 
 ## Portable Versus Raw
@@ -84,6 +86,10 @@ checkpoints and replay excessive history. For an affected package, re-export fro
 the original source using the corrected sender, or request a repaired new share;
 do not change an already-published share in place. A damaged portable copy cannot
 reliably reconstruct the removed metadata positions without its original source.
+Removing opaque compaction state is marked in updated packets and native import
+metadata, even when no checkpoint survives. A valid packet is not proof of exact
+active context: import preflight warns, canonical active-context conversion fails,
+and explicit `--history-policy visible` is labeled readable-history recovery.
 
 ```bash
 csl export <uuid> --raw --to ~/Downloads/raw-history.csl.zip

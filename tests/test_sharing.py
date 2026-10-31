@@ -245,6 +245,31 @@ class SharingTests(unittest.TestCase):
         tag = self.command("share", self.sid, "--provider", "claude")
         self.assertEqual(json.loads(self.releases[tag]["body"])["sessions"][0]["provider"], "claude")
 
+    def test_receive_conversion_has_independent_receipt_and_correct_launcher(self):
+        tag = self.publish()
+        native_ids = self.receive(tag)
+        with patch.object(sharing.shutil, "which", return_value="/bin/claude"), \
+             patch.object(sharing, "open_sessions") as launch:
+            converted_ids = self.receive(tag, "--target", "claude", "--open", "--model", "haiku")
+            launch.assert_called_once_with(converted_ids, self.cwd, ["--model", "haiku"], "claude")
+        self.assertNotEqual(converted_ids, native_ids)
+        self.assertEqual(self.receive(tag), native_ids)
+        self.assertEqual(self.receive(tag, "--target", "claude"), converted_ids)
+        receipt = json.loads((sharing.state_dir(csl) / "received.json").read_text())
+        self.assertEqual(len(receipt), 2)
+        converted = next(value for value in receipt.values() if value["provider"] == "claude")
+        self.assertEqual(converted["share_id"], tag)
+        continued = self.command("share", converted_ids[0], "--title", "Converted continuation")
+        self.assertEqual(json.loads(self.releases[continued]["body"])["continues"], [tag])
+
+    def test_reused_receive_does_not_bypass_budget_or_ignore_history_options(self):
+        tag = self.publish()
+        self.receive(tag)
+        with patch("sys.stderr", new_callable=io.StringIO), self.assertRaises(SystemExit):
+            self.receive(tag, "--max-context-chars", "1")
+        with patch("sys.stderr", new_callable=io.StringIO), self.assertRaises(SystemExit):
+            self.receive(tag, "--history-policy", "visible")
+
     def test_cwd_change_requires_new_flag(self):
         tag = self.publish()
         self.receive(tag)

@@ -86,7 +86,11 @@ Share/export detect the source automatically; specify `--provider claude` or
 `--provider codex` only to restrict lookup or resolve cross-CLI ambiguity.
 Receive auto-detects the native CLI. Both teammates must update CSL for Claude
 packages. Put CSL options before `--open`, then pass native CLI flags after it.
-Only same-CLI handoffs are integrated; see [coverage matrix](PROVIDER_MATRIX.md)
+Experimental text/tool conversion uses `--target codex` / `--target claude` on
+receive/import, or `csl convert UUID --to CLI`. Check before continuing with
+`csl doctor UUID --native --json`; this reconstructs a request only against
+localhost, without a paid model call. See [conversion limits](CONVERSION.md)
+and [coverage matrix](PROVIDER_MATRIX.md)
 and `csl capabilities --json` before assuming a command supports both CLIs.
 
 ### Manual ZIP Transfer

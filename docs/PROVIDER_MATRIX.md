@@ -1,6 +1,9 @@
 # CLI Coverage And Limits
 
 CSL supports **native Codex -> Codex and Claude Code -> Claude Code handoffs**.
+Explicit experimental conversion in both directions is integrated through
+canonical v2 for text, references and completed text tools. See
+[conversion and continuity](CONVERSION.md) for the exact profile and commands.
 "Provider" in CSL means the transcript/CLI adapter (`codex` or `claude`), not
 the model vendor, API endpoint, subscription or billing account.
 
@@ -21,7 +24,9 @@ registry. Update implementation, tests and this document in the same change.
 | `annotate` | supported | not-integrated |
 | `capabilities` | supported | supported |
 | `cockpit` | supported | not-integrated |
+| `convert` | experimental | experimental |
 | `cut` | supported | not-integrated |
+| `doctor` | supported | supported |
 | `export` | supported | supported |
 | `find-work` | supported | not-integrated |
 | `import` | supported | supported |
@@ -46,6 +51,11 @@ registry. Update implementation, tests and this document in the same change.
 | `team` | supported | supported |
 | `timeline` | supported | not-integrated |
 | `why` | supported | not-integrated |
+
+`convert` is an experimental, fail-closed adapter rather than a universal format
+translator. `doctor` reports structural/static/native evidence separately and
+does not call a live model. Native import preflight runs by default; isolated
+native replay is opt-in with `doctor --native`.
 
 `sessions --provider claude` scans main project transcripts and filters UUID/title
 with `--query`; it is not full-history semantic search. Codex listing uses its
@@ -90,6 +100,9 @@ The receiver auto-detects the native CLI from the validated package. An optional
 csl import ~/Downloads/handoff.csl.zip --cwd ~/work/project --open
 csl receive csl-xxxxxxxxxxxx --cwd ~/work/project --open
 csl receive csl-xxxxxxxxxxxx --provider claude --cwd ~/work/project --new --open --model haiku
+csl receive csl-xxxxxxxxxxxx --target codex --cwd ~/work/project --open
+csl convert SOURCE_UUID --to claude --cwd ~/work/project
+csl doctor SOURCE_UUID --native --json
 ```
 
 Everything after `--open` is a literal CLI argument. CSL options must come first.
@@ -123,7 +136,14 @@ CLI. Forwarding a prompt or `--print` can explicitly start inference; plain
 | External attachments / repository / credentials | Not collected | Not collected |
 | Embedded content | Existing JSONL content preserved; no fetching | Existing message blocks preserved; no fetching |
 | Raw mode | Ciphertext may fail under a different account/model | Signed thinking may fail under a different account/model |
-| Cross-CLI conversion | Codex -> Claude: not integrated | Claude -> Codex: not integrated |
+| Cross-CLI conversion | Codex -> Claude: experimental text/tools/references | Claude -> Codex: experimental text/tools/references |
+
+Conversion rejects images/PDFs and unknown state in its current profile; native
+same-CLI preservation remains unchanged. Source policies are quarantined only
+by the canonical conversion path, not retroactively removed from native Codex
+history. Updated portable exports mark lost encrypted compaction state; exact
+conversion then requires readable state, or an explicit labeled visible recovery.
+Native probes do not perform paid inference or guarantee local prompt overhead fits.
 
 Mixed-provider bundles are rejected; send each CLI's sessions separately. Codex
 bundles remain format v1 for compatibility; Claude bundles/releases use v2 so

@@ -15,6 +15,42 @@ import unittest
 import uuid
 
 
+def read_native_items(test, root, env, imported):
+    env = {"PATH": env["PATH"], "HOME": str(root), "CODEX_HOME": env["CODEX_HOME"],
+           "CLAUDE_CONFIG_DIR": env["CLAUDE_CONFIG_DIR"], "LANG": "C.UTF-8"}
+    responses = queue.Queue()
+    with (root / "stderr").open("w") as error:
+        process = subprocess.Popen(["codex", "app-server"], env=env, stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE, stderr=error, text=True, cwd=root, start_new_session=True)
+        def reader():
+            for line in process.stdout:
+                responses.put(json.loads(line))
+        threading.Thread(target=reader, daemon=True).start()
+        def send(value):
+            process.stdin.write(json.dumps(value) + "\n")
+            process.stdin.flush()
+        def call(number, method, params):
+            send({"id": number, "method": method, "params": params})
+            while True:
+                reply = responses.get(timeout=20)
+                if reply.get("id") == number:
+                    test.assertNotIn("error", reply)
+                    return reply["result"]
+        try:
+            call(1, "initialize", {"clientInfo": {"name": "csl_native_display_test", "version": "1.0"}})
+            send({"method": "initialized", "params": {}})
+            result = call(2, "thread/read", {"threadId": imported, "includeTurns": True})
+            items = [item for turn_data in result["thread"]["turns"] for item in turn_data["items"]]
+            return items
+        finally:
+            process.stdin.close()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                os.killpg(process.pid, signal.SIGTERM)
+                process.wait(timeout=5)
+            process.stdout.close()
+
 @unittest.skipUnless(os.environ.get("CSL_RUN_CODEX_NATIVE_TESTS") == "1" and shutil.which("codex"),
                      "Set CSL_RUN_CODEX_NATIVE_TESTS=1 with Codex installed for offline native UI verification")
 class NativeDisplayTests(unittest.TestCase):
@@ -50,40 +86,10 @@ class NativeDisplayTests(unittest.TestCase):
             subprocess.run(cli + ["export", sid, "--to", str(bundle)], env=env, capture_output=True, text=True, check=True, timeout=20)
             result = subprocess.run(cli + ["import", str(bundle), "--cwd", str(cwd)], env=env, capture_output=True, text=True, check=True, timeout=20)
             imported = re.search(r"imported: ([0-9a-f-]+)", result.stdout).group(1)
-            responses = queue.Queue()
-            with (root / "stderr").open("w") as error:
-                process = subprocess.Popen(["codex", "app-server"], env=env, stdin=subprocess.PIPE,
-                    stdout=subprocess.PIPE, stderr=error, text=True, start_new_session=True)
-                def reader():
-                    for line in process.stdout:
-                        responses.put(json.loads(line))
-                threading.Thread(target=reader, daemon=True).start()
-                def send(value):
-                    process.stdin.write(json.dumps(value) + "\n")
-                    process.stdin.flush()
-                def call(number, method, params):
-                    send({"id": number, "method": method, "params": params})
-                    while True:
-                        reply = responses.get(timeout=20)
-                        if reply.get("id") == number:
-                            self.assertNotIn("error", reply)
-                            return reply["result"]
-                try:
-                    call(1, "initialize", {"clientInfo": {"name": "csl_native_display_test", "version": "1.0"}})
-                    send({"method": "initialized", "params": {}})
-                    result = call(2, "thread/read", {"threadId": imported, "includeTurns": True})
-                    items = [item for turn_data in result["thread"]["turns"] for item in turn_data["items"]]
-                    users = [item for item in items if item["type"] == "userMessage"]
-                    answers = [item for item in items if item["type"] == "agentMessage"]
-                    self.assertEqual(len(users), 1)
-                    self.assertEqual(len(answers), 1)
-                    self.assertIn("USER-MARKER-874", json.dumps(users))
-                    self.assertEqual(answers[0]["text"], "ANSWER-MARKER-629")
-                finally:
-                    process.stdin.close()
-                    try:
-                        process.wait(timeout=5)
-                    except subprocess.TimeoutExpired:
-                        os.killpg(process.pid, signal.SIGTERM)
-                        process.wait(timeout=5)
-                    process.stdout.close()
+            items = read_native_items(self, root, env, imported)
+            users = [item for item in items if item["type"] == "userMessage"]
+            answers = [item for item in items if item["type"] == "agentMessage"]
+            self.assertEqual(len(users), 1)
+            self.assertEqual(len(answers), 1)
+            self.assertIn("USER-MARKER-874", json.dumps(users))
+            self.assertEqual(answers[0]["text"], "ANSWER-MARKER-629")

@@ -95,11 +95,27 @@ csl receive csl-SHARE_ID --cwd ~/work/project --open --model haiku
 csl receive csl-SHARE_ID --cwd ~/work/project --provider claude --open --dangerously-skip-permissions
 ```
 
-Use your real share ID. `--provider` on receive/import asserts the native CLI,
-not conversion: Codex-to-Claude and Claude-to-Codex are not integrated. Claude
+Use your real share ID. `--provider` on receive/import asserts the source CLI,
+not conversion; `--target` explicitly converts it (experimental text/tools profile). Claude
 exports/shares require updated CSL on both sides. Search/recall/cut commands
 remain Codex-only; basic Claude discovery uses `sessions`. Inspect the full
 matrix with `csl capabilities` or `csl capabilities --json`.
+
+### Conversion And Continuity
+
+```bash
+csl convert SESSION_UUID --to claude --cwd ~/work/project
+csl receive csl-SHARE_ID --target codex --cwd ~/work/project --open
+csl convert SESSION_UUID --to canonical --out ~/Downloads/conversation.json
+csl doctor SESSION_UUID --native --json
+```
+
+Conversion preserves supported text/tools through a versioned canonical format;
+it rejects unsupported assets and opaque context instead of silently dropping
+them. Native imports print structural/context preflight evidence. `doctor --native`
+checks request reconstruction in isolated homes against localhost, without model
+generation or real credentials. It is not a claim of successful live recall or
+universal context fit. See [conversion and continuity](docs/CONVERSION.md).
 
 Receiving the same snapshot again reuses your copy. Add `--new` to import
 another independent copy. Each continuation stays independent: this is a
@@ -232,6 +248,7 @@ against localhost, which stops before generation and uses no real API key.
 ## Documentation
 
 - [CLI/provider command and content coverage](docs/PROVIDER_MATRIX.md)
+- [Canonical conversion and continuity checks](docs/CONVERSION.md)
 - [Team installation and contributions](docs/TEAM_INSTALL.md)
 - [Private GitHub sharing](docs/SHARING.md)
 - [Portable ZIP transfers](docs/TRANSFERS.md)

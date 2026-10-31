@@ -6,6 +6,11 @@ launch flags, read [the command/provider matrix](PROVIDER_MATRIX.md).
 claude` lists native Claude sessions. The indexed librarian commands below
 remain Codex-only unless the matrix explicitly says otherwise.
 
+`csl convert` implements explicit canonical v2 conversion. `csl doctor` reports
+continuity evidence without claiming live inference. See [commands and safety
+contract](CONVERSION.md); use `--target` on import/receive for destination conversion,
+while `--provider` remains a source filter/assertion.
+
 This is an LLM-native operator tool: the commands are designed so an assistant can inspect, summarize, trim, and reopen Codex sessions efficiently.
 
 This project has two layers:

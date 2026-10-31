@@ -14,6 +14,11 @@ workflow under `docs/` before changing it.
 - Export/share auto-detect both local CLIs. Use `--provider` to restrict lookup;
   cross-CLI ambiguity must stop and request it, never silently choose a provider.
 - Receive/import auto-detect the native CLI; `--provider` asserts, not converts.
+- `--target` on receive/import or `convert --to` explicitly uses canonical v2.
+  Read `docs/CONVERSION.md`; never choose visible-history recovery or UNKNOWN tool
+  repair silently. Source policy stays quarantined in canonical conversions.
+- Native imports print continuity preflight. `doctor --native` measures isolated
+  localhost request reconstruction only, never live recall or guaranteed context fit.
 - All arguments after `--open` go literally to the native CLI. Put CSL options first;
   never add sandbox/approval bypass flags unless the user explicitly requests them.
 - Repeat receives reuse the latest local copy; add `--new` only when requested.

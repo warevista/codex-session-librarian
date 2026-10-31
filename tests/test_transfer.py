@@ -294,6 +294,12 @@ class TransferTests(unittest.TestCase):
         self.assertEqual(cleaned, record)
         self.assertEqual(removed, 0)
 
+    def test_application_compaction_objects_are_not_native_compaction(self):
+        record = {"type": "response_item", "payload": {"type": "function_call_output", "call_id": "application",
+            "output": {"type": "compaction", "encrypted_content": "application-owned data"}}}
+        self.assertFalse(transfer.has_opaque_compaction(record))
+        self.assertEqual(transfer.portable_record(record), (record, 0))
+
     def test_opaque_compaction_not_replayed_with_missing_required_field(self):
         item = {"type": "compaction", "encrypted_content": "cipher"}
         self.assertEqual(transfer.portable_record({"type": "response_item", "payload": item}), (None, 1))

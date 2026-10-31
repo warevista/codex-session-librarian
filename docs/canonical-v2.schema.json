@@ -1,0 +1,219 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:csl-conversation:v2",
+  "title": "CSL canonical conversation v2: text, references and completed text tools",
+  "type": "object",
+  "required": [
+    "format",
+    "version",
+    "events",
+    "source_context"
+  ],
+  "properties": {
+    "format": {
+      "const": "csl-conversation"
+    },
+    "version": {
+      "const": 2,
+      "type": "integer"
+    },
+    "source_context": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "source": {
+      "type": "object"
+    },
+    "report": {
+      "type": "object"
+    },
+    "events": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/event"
+      }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "text": {
+      "type": "object",
+      "required": [
+        "type",
+        "text"
+      ],
+      "properties": {
+        "type": {
+          "const": "text"
+        },
+        "text": {
+          "type": "string"
+        },
+        "references": {
+          "type": "array",
+          "maxItems": 100,
+          "items": {
+            "type": "object",
+            "required": [
+              "kind",
+              "data"
+            ],
+            "properties": {
+              "kind": {
+                "enum": [
+                  "annotation",
+                  "citation"
+                ]
+              },
+              "data": {
+                "type": "object"
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "call": {
+      "type": "object",
+      "required": [
+        "type",
+        "call_id",
+        "name",
+        "argument_format",
+        "arguments"
+      ],
+      "properties": {
+        "type": {
+          "const": "tool_call"
+        },
+        "call_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "argument_format": {
+          "enum": [
+            "json",
+            "text"
+          ]
+        },
+        "arguments": {}
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "argument_format": {
+                "const": "json"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "arguments": {
+                "type": "object"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "arguments": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "result": {
+      "type": "object",
+      "required": [
+        "type",
+        "call_id",
+        "content",
+        "is_error"
+      ],
+      "properties": {
+        "type": {
+          "const": "tool_result"
+        },
+        "call_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "content": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/text"
+          }
+        },
+        "is_error": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "event": {
+      "type": "object",
+      "required": [
+        "role",
+        "blocks"
+      ],
+      "properties": {
+        "role": {
+          "enum": [
+            "user",
+            "assistant"
+          ]
+        },
+        "id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "time": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "phase": {
+          "enum": [
+            null,
+            "commentary",
+            "final_answer"
+          ]
+        },
+        "blocks": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "oneOf": [
+              {
+                "$ref": "#/$defs/text"
+              },
+              {
+                "$ref": "#/$defs/call"
+              },
+              {
+                "$ref": "#/$defs/result"
+              }
+            ]
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}
+
